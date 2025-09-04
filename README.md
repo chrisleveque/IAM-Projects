@@ -1,4 +1,4 @@
-[exportUsers_2025-9-1.csv](https://github.com/user-attachments/files/22145128/exportUsers_2025-9-1.csv)[exportGroup_2025-9-1.csv](https://github.com/user-attachments/files/22145120/exportGroup_2025-9-1.csv)# Microsoft Entra ID IAM-Project
+# Microsoft Entra ID IAM-Project
 
 ### Lab 1: Azure Tenant & User Setup 
 
