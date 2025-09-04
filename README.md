@@ -32,13 +32,16 @@ Establish a Microsoft Entra ID tenant with baseline IAM configuration. Create or
 
 Screenshots 
 
-
+Carol Assigned Role
 <img width="1915" height="914" alt="Carol Martinez Assigned Role" src="https://github.com/user-attachments/assets/bf532d8c-ce9c-4a39-bb46-4d42bd4f6295" />
 
+Eve Assigned Role
 <img width="1920" height="910" alt="Eve Thompson Assigned Role" src="https://github.com/user-attachments/assets/4f77a36c-57bb-4ced-9ce1-7b15da27cc4c" />
 
+Group List
 <img width="1918" height="914" alt="Security Groups" src="https://github.com/user-attachments/assets/b24bb3b8-4425-4f83-b72b-70c309a02f48" />
 
+User List
 <img width="1920" height="914" alt="User List" src="https://github.com/user-attachments/assets/19f436de-a1e9-48ff-82d4-8ea59f8e24b4" />
 
 
@@ -75,16 +78,15 @@ Configure dynamic groups and implement Role-Based Access Control (RBAC) in Entra
 
 #### Screenshots 
 
-<img width="1920" height="1020" alt="Dynamic membership rule HR" src="https://github.com/user-attachments/assets/0d95c839-112c-4ecf-a485-a19bdd919027" />
+Dynamic Group Membership rules
+<img width="1920" height="860" alt="Dynamic membership rule HR" src="https://github.com/user-attachments/assets/b0c86491-dbf7-4e2d-bf46-c2f1027f2610" />
 
+HR Group Audit Log
 <img width="1920" height="860" alt="HR Group Audit Log" src="https://github.com/user-attachments/assets/211c0e11-fe46-4d7f-83d7-cf6e43d8780c" />
 
+IT Group RBAC
 <img width="1920" height="862" alt="IT Group RBAC" src="https://github.com/user-attachments/assets/f1d59693-ca49-4c6b-8835-0599219eec58" />
 
- 
-- Key configurations 
-- User/group assignments 
-- Policy screens 
 
 
 #### Results 
