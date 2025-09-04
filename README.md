@@ -48,3 +48,45 @@ CSV exports of users and groups created successfully. Organizational chart docum
 #### Business Value 
 
 This lab demonstrates a structured IAM foundation in Entra ID using RBAC. It shows an understanding of user provisioning, group management, and least privilege role assignment. The setup supports governance, auditing, and access management for future IAM/PAM labs. 
+
+
+### Lab 2: Dynamic Groups & RBAC 
+
+#### Objective 
+
+Configure dynamic groups and implement Role-Based Access Control (RBAC) in Entra ID to enforce least privilege principles. 
+
+#### Pre-requisites 
+
+- Microsoft Azure/Entra ID tenant access 
+- Admin privileges 
+- Any specific SaaS apps/tools required for the lab 
+
+#### Steps Taken 
+
+1. Step 1... 
+2. Step 2... 
+3. Step 3... 
+(Add details as performed) 
+
+#### Screenshots 
+
+<img width="1920" height="1020" alt="Dynamic membership rule HR" src="https://github.com/user-attachments/assets/0d95c839-112c-4ecf-a485-a19bdd919027" />
+
+<img width="1920" height="860" alt="HR Group Audit Log" src="https://github.com/user-attachments/assets/211c0e11-fe46-4d7f-83d7-cf6e43d8780c" />
+
+<img width="1920" height="862" alt="IT Group RBAC" src="https://github.com/user-attachments/assets/f1d59693-ca49-4c6b-8835-0599219eec58" />
+
+ 
+- Key configurations 
+- User/group assignments 
+- Policy screens 
+- Reports (if applicable) 
+
+#### Results 
+
+Dynamic groups were successfully configured based on department attributes. Role assignments were granted via role-assignable groups to demonstrate least privilege enforcement. 
+
+#### Business Value 
+
+This lab shows the ability to automate access control and enforce least privilege, reducing risk of over-provisioned accounts. 
