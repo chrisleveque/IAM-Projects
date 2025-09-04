@@ -5,20 +5,20 @@
 - [Lab 1 Azure Tenant & User Setup](https://github.com/chrisleveque/IAM-Projects/blob/main/README.md#lab-1-azure-tenant--user-setup)
 - [Lab 2 Dynamic Groups & RBAC](https://github.com/chrisleveque/IAM-Projects/blob/main/README.md#lab-2-dynamic-groups--rbac)
 
-### Lab 1: Azure Tenant & User Setup 
+# Lab 1: Azure Tenant & User Setup 
 
-#### Objective 
+## Objective 
 
 Establish a Microsoft Entra ID tenant with baseline IAM configuration. Create organizational units (departments), add test users, and assign initial roles. This provides the foundation for all future IAM/PAM labs. 
 
-#### Pre-requisites 
+## Pre-requisites 
 
 - Microsoft Azure trial subscription (or access to an existing one) 
 - Admin rights in the tenant 
 - Microsoft Graph PowerShell module installed 
  
 
-#### Steps Taken 
+## Steps Taken 
 
 1. Created Security Groups for departments (IT, HR, Finance, Contractors). 
 
@@ -49,34 +49,34 @@ User List
 
 
 
-#### Results 
+## Results 
 
 CSV exports of users and groups created successfully. Organizational chart documented. Users assigned to groups and roles per RBAC principles. 
 
-#### Business Value 
+## Business Value 
 
 This lab demonstrates a structured IAM foundation in Entra ID using RBAC. It shows an understanding of user provisioning, group management, and least privilege role assignment. The setup supports governance, auditing, and access management for future IAM/PAM labs. 
 
 
-### Lab 2: Dynamic Groups & RBAC 
+# Lab 2: Dynamic Groups & RBAC 
 
-#### Objective 
+## Objective 
 
 Configure dynamic groups and implement Role-Based Access Control (RBAC) in Entra ID to enforce least privilege principles. 
 
-#### Pre-requisites 
+## Pre-requisites 
 
 - Microsoft Azure/Entra ID tenant access 
 - Admin privileges 
 - Any specific SaaS apps/tools required for the lab 
 
-#### Steps Taken 
+## Steps Taken 
 
 1. Created Dynamic Groups
 2. Assigned User Attributes
 3. Assigned roles to implement RBAC
 
-#### Screenshots 
+## Screenshots 
 
 Dynamic Group Membership rules
 <img width="1920" height="860" alt="Dynamic membership rule HR" src="https://github.com/user-attachments/assets/b0c86491-dbf7-4e2d-bf46-c2f1027f2610" />
@@ -89,10 +89,65 @@ IT Group RBAC
 
 
 
-#### Results 
+## Results 
 
 Dynamic groups were successfully configured based on department attributes. Role assignments were granted via role-assignable groups to demonstrate least privilege enforcement. 
 
-#### Business Value 
+## Business Value 
 
 This lab shows the ability to automate access control and enforce least privilege, reducing risk of over-provisioned accounts. 
+
+# Lab 3: User Lifecycle (Joiner-Mover-Leaver) 
+
+## Objective 
+
+Automate user provisioning, group assignments, and deprovisioning using Entra ID dynamic groups and SaaS app integrations. 
+
+## Pre-requisites 
+
+- Microsoft Azure/Entra ID tenant access 
+- Admin privileges
+- Dynamic Groups
+- Salesforce Account(free trial)
+
+## Steps Taken 
+
+1. Configured Automatic Provisioning
+2. Added new user Jane Doe (Joiner)
+3. Verified Salesforce account was auto-provisioned
+4. Added more users to Salesforce confirming no provisioning errors
+5. Edited the user attribute for John Doe from Finance to HR
+6. Verified user was removed from Finance Group and added to the HR Group (mover)
+7. Disabled John's account
+8. Verified John's Salesforce account was automatically removed
+ 
+
+## Screenshots 
+
+<img width="1920" height="912" alt="Jane Doe Salesforce Provisioning" src="https://github.com/user-attachments/assets/5c4200c0-53da-4073-b1fe-203a36f2917c" />
+
+<img width="1915" height="862" alt="Provisioning Logs - Create" src="https://github.com/user-attachments/assets/ddac850b-71e0-4393-9837-fe6fc149405d" />
+
+<img width="1920" height="862" alt="John Doe's Group Before Moving" src="https://github.com/user-attachments/assets/7f09fb7c-d98c-4745-a979-ae4764f84c79" />
+
+<img width="1920" height="1020" alt="John Doe Attribute Change" src="https://github.com/user-attachments/assets/f3ea8dd4-f6d1-45a8-ab33-ff3847382098" />
+
+<img width="1920" height="859" alt="Finance Group Audit Log 1" src="https://github.com/user-attachments/assets/72052f4f-9e9f-45f6-b399-61602b53c502" />
+
+<img width="1920" height="857" alt="Finance Group Audit Log 2 " src="https://github.com/user-attachments/assets/fdbc4e5c-4f76-474a-896d-75904610ae15" />
+
+<img width="1920" height="865" alt="HR Audit Log 1" src="https://github.com/user-attachments/assets/7305e1b5-1f53-49d9-8a91-eac1a14d387d" />
+
+<img width="1920" height="863" alt="HR Audit Log 2" src="https://github.com/user-attachments/assets/5ed6c7ee-1957-44a5-9f3b-43c0c147e2eb" />
+
+<img width="1920" height="860" alt="John Doe Disabled" src="https://github.com/user-attachments/assets/6e1b1e94-c9c3-4427-ad04-9a0e06398be1" />
+
+<img width="1920" height="862" alt="John Doe Provisioning Logs" src="https://github.com/user-attachments/assets/966682eb-57d8-4e05-bb7a-5fc51f1d7856" />
+
+## Results 
+
+User lifecycle automation was demonstrated by provisioning a user into Salesforce, assigning groups dynamically, and ensuring account deprovisioning upon termination. 
+
+## Business Value 
+
+This lab highlights identity lifecycle governance, ensuring timely onboarding/offboarding and reducing orphan accounts. 
