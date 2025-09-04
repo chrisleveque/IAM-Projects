@@ -69,10 +69,9 @@ Configure dynamic groups and implement Role-Based Access Control (RBAC) in Entra
 
 #### Steps Taken 
 
-1. Step 1... 
-2. Step 2... 
-3. Step 3... 
-(Add details as performed) 
+1. Created Dynamic Groups
+2. Assigned User Attributes
+3. Assigned roles to implement RBAC
 
 #### Screenshots 
 
@@ -86,7 +85,7 @@ Configure dynamic groups and implement Role-Based Access Control (RBAC) in Entra
 - Key configurations 
 - User/group assignments 
 - Policy screens 
-- Reports (if applicable) 
+
 
 #### Results 
 
