@@ -2,8 +2,8 @@
 
 # Table of Contents
 
-- [Lab 1 Azure Tenant & User Setup](###Lab-1-Azure-Tenant-User-Setup)
-- [Lab 2 Dynamic Groups & RBAC](###Lab-2-Dynamic-Groups-RBAC)
+- [Lab 1 Azure Tenant & User Setup](https://github.com/chrisleveque/IAM-Projects/blob/main/README.md#lab-1-azure-tenant--user-setup)
+- [Lab 2 Dynamic Groups & RBAC](https://github.com/chrisleveque/IAM-Projects/edit/main/README.md#lab-2-dynamic-groups--rbac)
 
 ### Lab 1: Azure Tenant & User Setup 
 
