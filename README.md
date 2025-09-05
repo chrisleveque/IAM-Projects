@@ -151,3 +151,44 @@ User lifecycle automation was demonstrated by provisioning a user into Salesforc
 ## Business Value 
 
 This lab highlights identity lifecycle governance, ensuring timely onboarding/offboarding and reducing orphan accounts. 
+
+# Lab 4: Access Reviews (UAR Campaign) 
+
+## Objective 
+
+Configure User Access Review campaigns to ensure users maintain appropriate levels of access. 
+
+## Pre-requisites 
+
+- Identity Governance free trial
+
+Steps Taken 
+
+1. Setup Identity Governance free trial 
+2. Configure User Access Review
+3. Once configured, log in with the selected member to approve/deny at https://myaccess.microsoft.com/
+4. Approve/Deny selected users
+
+## Screenshots 
+
+<img width="1920" height="858" alt="UAR Settings 1" src="https://github.com/user-attachments/assets/128eee00-20e9-4dd1-8528-794ae30f9d66" />
+
+<img width="1918" height="862" alt="UAR Settings 2" src="https://github.com/user-attachments/assets/b9b84f57-8d99-4d58-955a-681dcf152b97" />
+
+<img width="1920" height="861" alt="UAR Settings 3" src="https://github.com/user-attachments/assets/73385997-cbb5-478d-b153-9674225a8432" />
+
+<img width="1918" height="858" alt="UAR Settings 4" src="https://github.com/user-attachments/assets/bd5432b7-ba58-476e-a5ce-b783e8e9511b" />
+
+<img width="1920" height="911" alt="UAR Before Approval" src="https://github.com/user-attachments/assets/73b3962a-b1b9-46d8-89ba-d26cd3686eda" />
+
+<img width="1920" height="907" alt="UAR Approval" src="https://github.com/user-attachments/assets/d610ecac-7286-4f17-86d3-07dc7a5bf86c" />
+
+
+## Results 
+
+An access review campaign was successfully created for managers to validate their direct reports' access rights. 
+
+## Business Value 
+
+This lab showcases governance and compliance readiness by ensuring periodic validation of user access. 
+
