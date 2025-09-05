@@ -5,6 +5,7 @@
 - [Lab 1: Azure Tenant & User Setup](https://github.com/chrisleveque/IAM-Projects/blob/main/README.md#lab-1-azure-tenant--user-setup)
 - [Lab 2: Dynamic Groups & RBAC](https://github.com/chrisleveque/IAM-Projects/blob/main/README.md#lab-2-dynamic-groups--rbac)
 - [Lab 3: User Lifecycle Management (Joiner-Mover-Leaver)](https://github.com/chrisleveque/IAM-Projects/blob/main/README.md#lab-3-user-lifecycle-joiner-mover-leaver)
+- [Lab 4: User Access Reviews](https://github.com/chrisleveque/IAM-Projects/tree/main#lab-4-access-reviews-uar-campaign)
 # Lab 1: Azure Tenant & User Setup 
 
 ## Objective 
