@@ -8,7 +8,7 @@
  */
 "use strict";
 
-const CACHE_NAME = "calorie-tracker-v2";
+const CACHE_NAME = "calorie-tracker-v3";
 const APP_SHELL = [
   "./",
   "./index.html",

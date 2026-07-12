@@ -18,6 +18,7 @@
       settings: { onlineSearch: false, usdaApiKey: "" },
       customFoods: [],
       log: {},
+      weights: {},
     };
   }
 

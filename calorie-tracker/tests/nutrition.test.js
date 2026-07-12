@@ -108,11 +108,49 @@ test("validateProfile stores the unit system, defaulting to metric", () => {
   assert.strictEqual(N.validateProfile({ ...base, units: "bogus" }).profile.units, "metric");
 });
 
-test("validateSettings requires a plausible key to enable online search", () => {
+test("validateSettings: consent toggle independent of key; bad keys dropped", () => {
   assert.deepStrictEqual(N.validateSettings({ onlineSearch: true, usdaApiKey: "abcDEF123" }), { onlineSearch: true, usdaApiKey: "abcDEF123" });
-  assert.deepStrictEqual(N.validateSettings({ onlineSearch: true }), { onlineSearch: false, usdaApiKey: "" });
-  assert.deepStrictEqual(N.validateSettings({ onlineSearch: true, usdaApiKey: "bad key!<script>" }), { onlineSearch: false, usdaApiKey: "" });
+  assert.deepStrictEqual(N.validateSettings({ onlineSearch: true }), { onlineSearch: true, usdaApiKey: "" }); // barcode-only mode
+  assert.deepStrictEqual(N.validateSettings({ onlineSearch: true, usdaApiKey: "bad key!<script>" }), { onlineSearch: true, usdaApiKey: "" });
   assert.deepStrictEqual(N.validateSettings(null), { onlineSearch: false, usdaApiKey: "" });
+  assert.deepStrictEqual(N.validateSettings({ onlineSearch: "yes" }), { onlineSearch: false, usdaApiKey: "" }); // strict boolean
+});
+
+test("mapOffProduct extracts Open Food Facts nutrition per 100 g", () => {
+  const payload = {
+    product: {
+      product_name: "Honey Nut Oat Cereal",
+      brands: "SomeBrand, OtherBrand",
+      nutriments: { "energy-kcal_100g": 379, proteins_100g: 8.9, carbohydrates_100g: 79.3, fat_100g: 4.9 },
+    },
+  };
+  assert.deepStrictEqual(N.mapOffProduct(payload), {
+    name: "Honey Nut Oat Cereal — SomeBrand", kcal: 379, protein: 8.9, carbs: 79.3, fat: 4.9,
+  });
+  assert.strictEqual(N.mapOffProduct({ product: { product_name: "x", nutriments: {} } }), null); // no energy
+  assert.strictEqual(N.mapOffProduct({ product: { nutriments: { "energy-kcal_100g": 100 } } }), null); // no name
+  assert.strictEqual(N.mapOffProduct(null), null);
+});
+
+test("barcode format accepts EAN/UPC digit strings only", () => {
+  assert.ok(N.BARCODE_RE.test("016000275270"));
+  assert.ok(N.BARCODE_RE.test("40111445"));
+  assert.ok(!N.BARCODE_RE.test("123"));
+  assert.ok(!N.BARCODE_RE.test("abc123456789"));
+  assert.ok(!N.BARCODE_RE.test("1".repeat(15)));
+});
+
+test("validateWeights keeps valid dated entries and clamps values", () => {
+  const weights = N.validateWeights({
+    "2026-07-01": 81.55,
+    "2026-07-02": "82",
+    "not-a-date": 80,
+    "2026-07-03": 9999,
+    "2026-07-04": "junk",
+  });
+  assert.deepStrictEqual(weights, { "2026-07-01": 81.6, "2026-07-02": 82, "2026-07-03": 350 });
+  assert.deepStrictEqual(N.validateWeights(null), {});
+  assert.deepStrictEqual(N.validateWeights([1, 2]), {});
 });
 
 test("mapUsdaFood extracts per-100g nutrients and brand", () => {

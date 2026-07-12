@@ -251,8 +251,11 @@ function validateTargetOverrides(raw) {
   return Object.keys(out).length ? out : null;
 }
 
-/** Validate app settings (online search opt-in). Always returns a settings
- * object with safe defaults. */
+/**
+ * Validate app settings. `onlineSearch` is the single opt-in consent for all
+ * network features (barcode lookup needs no key; USDA text search also
+ * requires a valid key). Always returns a settings object with safe defaults.
+ */
 function validateSettings(raw) {
   const settings = { onlineSearch: false, usdaApiKey: "" };
   if (raw && typeof raw === "object") {
@@ -261,7 +264,6 @@ function validateSettings(raw) {
       settings.usdaApiKey = raw.usdaApiKey;
     }
   }
-  if (!settings.usdaApiKey) settings.onlineSearch = false;
   return settings;
 }
 
@@ -276,6 +278,49 @@ const USDA_NUTRIENT_IDS = {
   fat: [1004],
   carbs: [1005],
 };
+
+const BARCODE_RE = /^\d{8,14}$/;
+
+/**
+ * Map an Open Food Facts v2 product response into our per-100 g food shape,
+ * or null if unusable. Callers still pass the result through validateFood —
+ * API data is untrusted.
+ */
+function mapOffProduct(data) {
+  if (!data || typeof data !== "object" || !data.product || typeof data.product !== "object") {
+    return null;
+  }
+  const p = data.product;
+  const n = p.nutriments && typeof p.nutriments === "object" ? p.nutriments : {};
+  const kcal = Number(n["energy-kcal_100g"]);
+  if (!Number.isFinite(kcal)) return null;
+  const name = String(p.product_name || "").trim();
+  if (!name) return null;
+  const brand = typeof p.brands === "string" && p.brands.trim()
+    ? ` — ${p.brands.split(",")[0].trim()}`
+    : "";
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return {
+    name: name.slice(0, 60) + brand,
+    kcal,
+    protein: num(n.proteins_100g),
+    carbs: num(n.carbohydrates_100g),
+    fat: num(n.fat_100g),
+  };
+}
+
+/** Validate a weight log: { "YYYY-MM-DD": kg }. Returns a sanitized copy. */
+function validateWeights(raw) {
+  const weights = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const key of Object.keys(raw).slice(0, 3700)) {
+      if (!DATE_KEY_RE.test(key)) continue;
+      const kg = clampNumber(Number(raw[key]), PROFILE_LIMITS.weightKg.min, PROFILE_LIMITS.weightKg.max);
+      if (kg !== null) weights[key] = Math.round(kg * 10) / 10;
+    }
+  }
+  return weights;
+}
 
 function mapUsdaFood(item) {
   if (!item || typeof item !== "object" || !Array.isArray(item.foodNutrients)) return null;
@@ -376,6 +421,7 @@ function validateImportedState(raw) {
     settings: validateSettings(raw.settings),
     customFoods,
     log,
+    weights: validateWeights(raw.weights),
   };
 }
 
@@ -392,6 +438,9 @@ const Nutrition = {
   validateTargetOverrides,
   validateSettings,
   mapUsdaFood,
+  mapOffProduct,
+  validateWeights,
+  BARCODE_RE,
   KCAL_PER_GRAM,
   PROFILE_LIMITS,
   bmr,

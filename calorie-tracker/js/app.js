@@ -481,19 +481,23 @@
   function onSaveUsda(event) {
     event.preventDefault();
     const feedback = document.getElementById("usda-feedback");
-    const wanted = document.getElementById("usda-enabled").checked;
+    const rawKey = document.getElementById("usda-key").value.trim();
     state.settings = N.validateSettings({
-      onlineSearch: wanted,
-      usdaApiKey: document.getElementById("usda-key").value.trim(),
+      onlineSearch: document.getElementById("usda-enabled").checked,
+      usdaApiKey: rawKey,
     });
     persist();
     fillUsdaForm();
-    if (wanted && !state.settings.onlineSearch) {
-      feedback.textContent = "Enter a valid API key (letters and numbers) to enable search.";
+    updateBarcodeButton();
+    if (!state.settings.onlineSearch) {
+      feedback.textContent = "Online lookup is off. The app makes no network requests.";
+    } else if (rawKey && !state.settings.usdaApiKey) {
+      feedback.textContent =
+        "Barcode lookup is on. The USDA key looks invalid (letters/numbers only), so text search stays off.";
+    } else if (state.settings.usdaApiKey) {
+      feedback.textContent = "Barcode lookup and USDA text search are on. Only barcodes and search words are ever sent.";
     } else {
-      feedback.textContent = state.settings.onlineSearch
-        ? "USDA search is on. Only your search words are ever sent."
-        : "USDA search is off. The app makes no network requests.";
+      feedback.textContent = "Barcode lookup is on. Add a USDA key to also enable online text search.";
     }
   }
 
@@ -515,6 +519,208 @@
       }
     }
     return foods;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Barcode lookup (Open Food Facts)                                   */
+  /* ---------------------------------------------------------------- */
+
+  const OFF_ENDPOINT = "https://world.openfoodfacts.org/api/v2/product/";
+  let barcodeStream = null;
+  let barcodeScanning = false;
+
+  function updateBarcodeButton() {
+    document.getElementById("barcode-btn").hidden = !state.settings.onlineSearch;
+    if (!state.settings.onlineSearch) closeBarcodePanel();
+  }
+
+  async function lookupBarcode(code) {
+    const feedback = document.getElementById("barcode-feedback");
+    if (!N.BARCODE_RE.test(code)) {
+      feedback.textContent = "Enter the 8–14 digit number printed under the barcode.";
+      return;
+    }
+    feedback.textContent = "Looking up…";
+    try {
+      const response = await fetch(
+        `${OFF_ENDPOINT}${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments`
+      );
+      if (response.status === 404) {
+        feedback.textContent = "No product found for that barcode.";
+        return;
+      }
+      if (!response.ok) throw new Error(`OFF responded ${response.status}`);
+      const food = N.validateFood(N.mapOffProduct(await response.json()));
+      if (!food) {
+        feedback.textContent = "Product found but it has no usable nutrition data.";
+        return;
+      }
+      feedback.textContent = "";
+      closeBarcodePanel();
+      selectFood(food, true); // saved on-device like USDA picks
+      announce(`Found ${food.name}.`);
+    } catch (err) {
+      feedback.textContent = "Lookup failed — check your connection and try again.";
+    }
+  }
+
+  /* Camera scanning via the BarcodeDetector API where the browser has it
+   * (Android Chrome). Elsewhere (including iOS Safari today) the manual
+   * number field is the fallback. */
+  async function startBarcodeCamera() {
+    if (!("BarcodeDetector" in window) || !navigator.mediaDevices) return;
+    const video = document.getElementById("barcode-video");
+    try {
+      barcodeStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+    } catch (err) {
+      return; // permission denied — manual entry still works
+    }
+    video.srcObject = barcodeStream;
+    video.hidden = false;
+    await video.play();
+    const detector = new window.BarcodeDetector({
+      formats: ["ean_13", "ean_8", "upc_a", "upc_e"],
+    });
+    barcodeScanning = true;
+    const scan = async () => {
+      if (!barcodeScanning) return;
+      try {
+        const codes = await detector.detect(video);
+        if (codes.length && N.BARCODE_RE.test(codes[0].rawValue)) {
+          document.getElementById("barcode-input").value = codes[0].rawValue;
+          stopBarcodeCamera();
+          lookupBarcode(codes[0].rawValue);
+          return;
+        }
+      } catch (err) {
+        /* detector hiccup — keep trying */
+      }
+      requestAnimationFrame(scan);
+    };
+    requestAnimationFrame(scan);
+  }
+
+  function stopBarcodeCamera() {
+    barcodeScanning = false;
+    if (barcodeStream) {
+      for (const track of barcodeStream.getTracks()) track.stop();
+      barcodeStream = null;
+    }
+    const video = document.getElementById("barcode-video");
+    video.srcObject = null;
+    video.hidden = true;
+  }
+
+  function openBarcodePanel() {
+    document.getElementById("barcode-panel").hidden = false;
+    document.getElementById("barcode-feedback").textContent = "";
+    document.getElementById("barcode-input").focus();
+    startBarcodeCamera();
+  }
+
+  function closeBarcodePanel() {
+    stopBarcodeCamera();
+    document.getElementById("barcode-panel").hidden = true;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Weight log                                                         */
+  /* ---------------------------------------------------------------- */
+
+  function weightUnitsLabel() {
+    return state.profile && state.profile.units === "us" ? "lb" : "kg";
+  }
+
+  function onLogWeight(event) {
+    event.preventDefault();
+    const feedback = document.getElementById("weight-feedback");
+    const raw = Number(document.getElementById("weight-input").value);
+    const kg = weightUnitsLabel() === "lb" ? N.lbToKg(raw) : raw;
+    const rounded = Math.round(kg * 10) / 10;
+    if (!Number.isFinite(rounded) || rounded < 30 || rounded > 350) {
+      feedback.textContent = "Enter a weight in the normal human range.";
+      return;
+    }
+    state.weights[N.dateKey(new Date())] = rounded;
+    state.profile.weightKg = rounded; // keep recommendations current
+    persist();
+    feedback.textContent = "Weight logged.";
+    document.getElementById("weight-input").value = "";
+    render();
+  }
+
+  /* 30-day weight trend: single line series, direct min/max labels. */
+  function renderWeightChart() {
+    const mount = document.getElementById("weight-chart");
+    clearNode(mount);
+    const keys = N.lastNDateKeys(new Date(), 30);
+    const points = [];
+    keys.forEach((key, i) => {
+      if (state.weights[key] !== undefined) points.push({ i, key, kg: state.weights[key] });
+    });
+    if (points.length === 0) {
+      mount.appendChild(el("p", "meal-empty", "No weights logged yet."));
+      return;
+    }
+
+    const toDisplay = (kg) => (weightUnitsLabel() === "lb" ? N.kgToLb(kg) : kg);
+    const values = points.map((p) => toDisplay(p.kg));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = { top: 14, right: 8, bottom: 18, left: 8 };
+    const width = 320;
+    const height = 120;
+    const plotW = width - pad.left - pad.right;
+    const plotH = height - pad.top - pad.bottom;
+    const span = Math.max(max - min, 1); // avoid a flat line filling the plot
+    const x = (i) => pad.left + (plotW * i) / 29;
+    const y = (v) => pad.top + plotH * (1 - (v - min) / span);
+
+    const svg = svgEl("svg", {
+      viewBox: `0 0 ${width} ${height}`,
+      class: "week-svg",
+      role: "img",
+      "aria-label": `Weight over the last 30 days, from ${fmt(values[0])} to ${fmt(values[values.length - 1])} ${weightUnitsLabel()}`,
+    });
+    svg.appendChild(
+      svgEl("line", {
+        x1: pad.left, x2: width - pad.right,
+        y1: pad.top + plotH, y2: pad.top + plotH,
+        stroke: "var(--chart-baseline)", "stroke-width": 1,
+      })
+    );
+    if (points.length > 1) {
+      const d = points
+        .map((p, idx) => `${idx === 0 ? "M" : "L"}${x(p.i).toFixed(1)},${y(toDisplay(p.kg)).toFixed(1)}`)
+        .join(" ");
+      svg.appendChild(
+        svgEl("path", { d, fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" })
+      );
+    }
+    for (const p of points) {
+      svg.appendChild(
+        svgEl("circle", {
+          cx: x(p.i), cy: y(toDisplay(p.kg)), r: 3.5,
+          fill: "var(--series-1)", stroke: "var(--surface)", "stroke-width": 2,
+        })
+      );
+    }
+    const last = points[points.length - 1];
+    svg.appendChild(
+      Object.assign(
+        svgEl("text", {
+          x: Math.min(x(last.i), width - pad.right - 4),
+          y: Math.max(y(toDisplay(last.kg)) - 8, 10),
+          "text-anchor": "end",
+          class: "week-axis-label",
+        }),
+        { textContent: `${fmt(toDisplay(last.kg))} ${weightUnitsLabel()}` }
+      )
+    );
+    mount.appendChild(svg);
   }
 
   /* ---------------------------------------------------------------- */
@@ -560,7 +766,7 @@
     clearNode(mount);
     for (const food of results) mount.appendChild(resultButton(food, false));
 
-    if (state.settings.onlineSearch && query && query.trim().length >= 2) {
+    if (state.settings.onlineSearch && state.settings.usdaApiKey && query && query.trim().length >= 2) {
       const online = el("button", "search-result search-online");
       online.type = "button";
       online.appendChild(el("span", "search-result-name", `Search USDA for “${query.trim()}”`));
@@ -716,7 +922,11 @@
     renderMacros(totals, targets);
     renderWeekChart(targets);
     renderLog();
+    renderWeightChart();
     fillTargetsForm();
+    updateBarcodeButton();
+    document.getElementById("weight-log-label").textContent =
+      `Today’s weight (${weightUnitsLabel()})`;
   }
 
   /* ---------------------------------------------------------------- */
@@ -740,6 +950,18 @@
     });
     document.getElementById("profile-units").addEventListener("change", () => {
       applyUnitsToForm(currentUnits());
+    });
+    document.getElementById("weight-form").addEventListener("submit", onLogWeight);
+    document.getElementById("barcode-btn").addEventListener("click", openBarcodePanel);
+    document.getElementById("barcode-close").addEventListener("click", closeBarcodePanel);
+    document.getElementById("barcode-lookup").addEventListener("click", () => {
+      lookupBarcode(document.getElementById("barcode-input").value.trim());
+    });
+    document.getElementById("barcode-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        lookupBarcode(e.target.value.trim());
+      }
     });
 
     document.getElementById("food-search").addEventListener("input", (e) => {
