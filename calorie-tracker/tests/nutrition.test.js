@@ -121,15 +121,55 @@ test("mapOffProduct extracts Open Food Facts nutrition per 100 g", () => {
     product: {
       product_name: "Honey Nut Oat Cereal",
       brands: "SomeBrand, OtherBrand",
+      serving_quantity: 28,
       nutriments: { "energy-kcal_100g": 379, proteins_100g: 8.9, carbohydrates_100g: 79.3, fat_100g: 4.9 },
     },
   };
-  assert.deepStrictEqual(N.mapOffProduct(payload), {
+  const mapped = N.mapOffProduct(payload);
+  assert.deepStrictEqual(mapped.food, {
     name: "Honey Nut Oat Cereal — SomeBrand", kcal: 379, protein: 8.9, carbs: 79.3, fat: 4.9,
   });
+  assert.strictEqual(mapped.servingG, 28);
+  assert.strictEqual(mapped.macrosSuspect, false);
   assert.strictEqual(N.mapOffProduct({ product: { product_name: "x", nutriments: {} } }), null); // no energy
   assert.strictEqual(N.mapOffProduct({ product: { nutriments: { "energy-kcal_100g": 100 } } }), null); // no name
   assert.strictEqual(N.mapOffProduct(null), null);
+});
+
+test("mapOffProduct falls back to per-serving values when _100g is missing", () => {
+  const payload = {
+    product: {
+      product_name: "Serving-Only Snack",
+      serving_quantity: 40,
+      nutriments: {
+        "energy-kcal_serving": 160, proteins_serving: 4, carbohydrates_serving: 24, fat_serving: 5.2,
+      },
+    },
+  };
+  const mapped = N.mapOffProduct(payload);
+  assert.deepStrictEqual(mapped.food, {
+    name: "Serving-Only Snack", kcal: 400, protein: 10, carbs: 60, fat: 13,
+  });
+  assert.strictEqual(mapped.servingG, 40);
+  assert.strictEqual(mapped.macrosSuspect, false);
+});
+
+test("mapOffProduct flags macro data that can't explain the calories", () => {
+  const mapped = N.mapOffProduct({
+    product: {
+      product_name: "Bad Data Bar",
+      nutriments: { "energy-kcal_100g": 450, proteins_100g: 0, carbohydrates_100g: 0, fat_100g: 0 },
+    },
+  });
+  assert.strictEqual(mapped.macrosSuspect, true);
+  // and impossible values are rejected downstream by validateFood
+  const junk = N.mapOffProduct({
+    product: {
+      product_name: "Unit Error Bar",
+      nutriments: { "energy-kcal_100g": 100, proteins_100g: 2900, carbohydrates_100g: 10, fat_100g: 2 },
+    },
+  });
+  assert.strictEqual(N.validateFood(junk.food), null);
 });
 
 test("barcode format accepts EAN/UPC digit strings only", () => {
@@ -227,7 +267,7 @@ test("validateProfile rejects out-of-range and missing values", () => {
 
 /* ---------------- food / entry validation ---------------- */
 
-test("validateFood clamps and accepts numeric strings", () => {
+test("validateFood accepts numeric strings and trims names", () => {
   const food = N.validateFood({ name: "  My Bar  ", kcal: "250", protein: "10", carbs: "30", fat: "8" });
   assert.deepStrictEqual(food, { name: "My Bar", kcal: 250, protein: 10, carbs: 30, fat: 8 });
 });
@@ -236,6 +276,23 @@ test("validateFood rejects non-numeric and empty names", () => {
   assert.strictEqual(N.validateFood({ name: "", kcal: 1, protein: 1, carbs: 1, fat: 1 }), null);
   assert.strictEqual(N.validateFood({ name: "x", kcal: "abc", protein: 1, carbs: 1, fat: 1 }), null);
   assert.strictEqual(N.validateFood(null), null);
+});
+
+test("validateFood REJECTS impossible per-100g values instead of clamping", () => {
+  // clamping protein to 100 g/100 g made logged protein equal the portion size
+  assert.strictEqual(N.validateFood({ name: "junk", kcal: 100, protein: 2900, carbs: 10, fat: 2 }), null);
+  assert.strictEqual(N.validateFood({ name: "junk", kcal: 5000, protein: 10, carbs: 10, fat: 2 }), null);
+  assert.strictEqual(N.validateFood({ name: "junk", kcal: 100, protein: -5, carbs: 10, fat: 2 }), null);
+  // macros summing past 100 g per 100 g are physically impossible too
+  assert.strictEqual(N.validateFood({ name: "junk", kcal: 600, protein: 60, carbs: 60, fat: 20 }), null);
+  // legitimate extremes still pass
+  assert.ok(N.validateFood({ name: "Olive oil", kcal: 884, protein: 0, carbs: 0, fat: 100 }));
+});
+
+test("macrosConsistent flags foods whose macros don't explain their kcal", () => {
+  assert.ok(N.macrosConsistent({ kcal: 379, protein: 8.9, carbs: 79.3, fat: 4.9 }));
+  assert.ok(!N.macrosConsistent({ kcal: 379, protein: 0, carbs: 0, fat: 0 }));
+  assert.ok(!N.macrosConsistent({ kcal: 50, protein: 25, carbs: 25, fat: 10 }));
 });
 
 test("sanitizeName strips control characters and caps length", () => {
@@ -310,14 +367,18 @@ test("validateImportedState drops malformed log keys and entries", () => {
   assert.strictEqual(state.log["2026-07-01"][0].name, "ok");
 });
 
-test("validateImportedState clamps hostile numeric values", () => {
+test("validateImportedState drops foods with hostile numeric values", () => {
   const state = N.validateImportedState({
     version: 1,
     profile: null,
-    customFoods: [{ name: "hax", kcal: 1e308, protein: -50, carbs: 1e9, fat: 3 }],
+    customFoods: [
+      { name: "hax", kcal: 1e308, protein: -50, carbs: 1e9, fat: 3 },
+      { name: "fine", kcal: 250, protein: 10, carbs: 30, fat: 8 },
+    ],
     log: {},
   });
-  assert.deepStrictEqual(state.customFoods[0], { name: "hax", kcal: 900, protein: 0, carbs: 100, fat: 3 });
+  assert.strictEqual(state.customFoods.length, 1);
+  assert.strictEqual(state.customFoods[0].name, "fine");
 });
 
 test("validateImportedState rejects imports with an invalid profile", () => {

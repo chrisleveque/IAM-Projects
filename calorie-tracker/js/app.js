@@ -8,7 +8,7 @@
 "use strict";
 
 (function () {
-  const APP_VERSION = "1.4.0"; // bump on every release, with sw.js CACHE_NAME
+  const APP_VERSION = "1.4.1"; // bump on every release, with sw.js CACHE_NAME
   const N = window.Nutrition;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const MEALS = ["breakfast", "lunch", "dinner", "snacks"];
@@ -544,22 +544,33 @@
     feedback.textContent = "Looking up…";
     try {
       const response = await fetch(
-        `${OFF_ENDPOINT}${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments`
+        `${OFF_ENDPOINT}${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments,serving_quantity`
       );
       if (response.status === 404) {
         feedback.textContent = "No product found for that barcode.";
         return;
       }
       if (!response.ok) throw new Error(`OFF responded ${response.status}`);
-      const food = N.validateFood(N.mapOffProduct(await response.json()));
+      const mapped = N.mapOffProduct(await response.json());
+      const food = mapped && N.validateFood(mapped.food);
       if (!food) {
-        feedback.textContent = "Product found but it has no usable nutrition data.";
+        feedback.textContent =
+          "This product's database entry has missing or impossible nutrition values — please add it as a custom food from its label.";
         return;
       }
       feedback.textContent = "";
       closeBarcodePanel();
       selectFood(food, true); // saved on-device like USDA picks
-      announce(`Found ${food.name}.`);
+      if (mapped.servingG) {
+        document.getElementById("food-grams").value = String(mapped.servingG);
+      }
+      if (mapped.macrosSuspect) {
+        document.getElementById("add-feedback").textContent =
+          "Heads up: this product's protein/carb/fat data doesn't add up to its calories — double-check against the label before trusting the macros.";
+        announce(`Found ${food.name}, but its macro data looks unreliable.`);
+      } else {
+        announce(`Found ${food.name}.`);
+      }
     } catch (err) {
       feedback.textContent = "Lookup failed — check your connection and try again.";
     }

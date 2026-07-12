@@ -282,9 +282,14 @@ const USDA_NUTRIENT_IDS = {
 const BARCODE_RE = /^\d{8,14}$/;
 
 /**
- * Map an Open Food Facts v2 product response into our per-100 g food shape,
- * or null if unusable. Callers still pass the result through validateFood —
- * API data is untrusted.
+ * Map an Open Food Facts v2 product response into our per-100 g food shape.
+ * Returns { food, servingG, macrosSuspect } or null if unusable.
+ *
+ * Per-100 g fields are preferred; when one is missing, it is computed from
+ * the per-serving value and serving_quantity (grams). `macrosSuspect` is set
+ * when the macros fail the Atwater cross-check against the stated calories —
+ * common with crowd-sourced entry errors. Callers still pass `food` through
+ * validateFood — API data is untrusted.
  */
 function mapOffProduct(data) {
   if (!data || typeof data !== "object" || !data.product || typeof data.product !== "object") {
@@ -292,20 +297,39 @@ function mapOffProduct(data) {
   }
   const p = data.product;
   const n = p.nutriments && typeof p.nutriments === "object" ? p.nutriments : {};
-  const kcal = Number(n["energy-kcal_100g"]);
-  if (!Number.isFinite(kcal)) return null;
+  const servingQty = Number(p.serving_quantity);
+  const per100 = (key) => {
+    const direct = Number(n[`${key}_100g`]);
+    if (Number.isFinite(direct)) return direct;
+    const perServing = Number(n[`${key}_serving`]);
+    if (Number.isFinite(perServing) && Number.isFinite(servingQty) && servingQty > 0) {
+      return (perServing * 100) / servingQty;
+    }
+    return null;
+  };
+
+  const kcal = per100("energy-kcal");
+  if (kcal === null) return null;
   const name = String(p.product_name || "").trim();
   if (!name) return null;
   const brand = typeof p.brands === "string" && p.brands.trim()
     ? ` — ${p.brands.split(",")[0].trim()}`
     : "";
-  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  return {
+  const round = (v) => (v === null ? 0 : Math.round(v * 10) / 10);
+  const food = {
     name: name.slice(0, 60) + brand,
-    kcal,
-    protein: num(n.proteins_100g),
-    carbs: num(n.carbohydrates_100g),
-    fat: num(n.fat_100g),
+    kcal: round(kcal),
+    protein: round(per100("proteins")),
+    carbs: round(per100("carbohydrates")),
+    fat: round(per100("fat")),
+  };
+  return {
+    food,
+    servingG:
+      Number.isFinite(servingQty) && servingQty >= 1 && servingQty <= 5000
+        ? Math.round(servingQty)
+        : null,
+    macrosSuspect: !macrosConsistent(food),
   };
 }
 
@@ -348,16 +372,37 @@ function mapUsdaFood(item) {
   };
 }
 
-/** Validate one per-100 g food definition (custom food or import). */
+/**
+ * Validate one per-100 g food definition (custom food or import).
+ * Physically impossible values are REJECTED, never clamped — clamping
+ * out-of-range database values to the max would fabricate nutrition data
+ * (e.g. protein forced to exactly 100 g/100 g makes the logged protein
+ * always equal the portion size).
+ */
+function inRange(v, min, max) {
+  return isFiniteNumber(v) && v >= min && v <= max ? v : null;
+}
+
 function validateFood(raw) {
   const name = sanitizeName(raw && raw.name);
   if (!name) return null;
-  const kcal = clampNumber(Number(raw.kcal), 0, 900);
-  const protein = clampNumber(Number(raw.protein), 0, 100);
-  const carbs = clampNumber(Number(raw.carbs), 0, 100);
-  const fat = clampNumber(Number(raw.fat), 0, 100);
+  const kcal = inRange(Number(raw.kcal), 0, 900);
+  const protein = inRange(Number(raw.protein), 0, 100);
+  const carbs = inRange(Number(raw.carbs), 0, 100);
+  const fat = inRange(Number(raw.fat), 0, 100);
   if ([kcal, protein, carbs, fat].some((v) => v === null)) return null;
+  if (protein + carbs + fat > 105) return null; // >100 g of macros per 100 g
   return { name, kcal, protein, carbs, fat };
+}
+
+/**
+ * 4/4/9 Atwater cross-check: do the macros roughly account for the stated
+ * calories? Used to flag unreliable crowd-sourced product data.
+ */
+function macrosConsistent(food) {
+  const derived = food.protein * 4 + food.carbs * 4 + food.fat * 9;
+  const tolerance = Math.max(30, food.kcal * 0.35);
+  return Math.abs(derived - food.kcal) <= tolerance;
 }
 
 /** Validate one log entry from an untrusted import. */
@@ -437,6 +482,7 @@ const Nutrition = {
   cmToFtIn,
   validateTargetOverrides,
   validateSettings,
+  macrosConsistent,
   mapUsdaFood,
   mapOffProduct,
   validateWeights,
