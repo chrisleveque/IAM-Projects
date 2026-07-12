@@ -13,11 +13,17 @@ public-domain dataset.
 
 - **Personal daily goal** — calorie target computed with the Mifflin–St Jeor
   equation from your age, height, weight, activity level, and goal
-  (lose / maintain / gain), with a built-in safety floor.
-- **Macro targets** — protein / carbs / fat goals (30 / 40 / 30 split) with
-  progress bars.
-- **Food logging** — search 55+ built-in foods (per-100 g values from USDA
+  (lose / maintain / gain), with a built-in safety floor. US (lb, ft/in) and
+  metric units.
+- **Smart macro targets** — protein anchored to your body weight and goal
+  (2.0 g/kg cutting, 1.6 maintaining, 1.8 gaining), a fat floor, carbs from
+  the remainder — plus manual override of any target.
+- **Food logging** — search 285 built-in foods (per-100 g values from USDA
   data), log portions in grams to breakfast, lunch, dinner, or snacks.
+- **Optional USDA online search** — off by default; enable it with a free
+  api.data.gov key to search hundreds of thousands of branded grocery
+  products. Only your search words are sent — never your profile or log.
+  Picked foods are saved on-device for offline reuse.
 - **Custom foods** — add your own foods with per-100 g nutrition values.
 - **Progress views** — calorie ring, macro bars, and a 7-day history chart
   with your goal line.

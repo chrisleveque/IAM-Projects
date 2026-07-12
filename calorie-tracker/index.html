@@ -6,7 +6,7 @@
   <!-- Strict CSP: same-origin scripts/styles/worker only, no remote requests at all.
        connect-src 'self' lets the service worker refresh cached app files. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'; object-src 'none'">
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.nal.usda.gov; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'; object-src 'none'">
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="A free, private calorie tracker. All data stays in your browser.">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9f9f7">
@@ -39,6 +39,12 @@
       </p>
       <form id="profile-form" novalidate>
         <div class="form-grid">
+          <label>Units
+            <select id="profile-units">
+              <option value="us" selected>US (lb, ft/in)</option>
+              <option value="metric">Metric (kg, cm)</option>
+            </select>
+          </label>
           <label>Formula body type
             <select id="profile-sex" required>
               <option value="" selected disabled>Choose…</option>
@@ -49,11 +55,19 @@
           <label>Age (years)
             <input id="profile-age" type="number" min="13" max="120" inputmode="numeric" required>
           </label>
-          <label>Height (cm)
-            <input id="profile-height" type="number" min="90" max="250" inputmode="numeric" required>
+          <label id="height-metric-label" hidden>Height (cm)
+            <input id="profile-height" type="number" min="90" max="250" inputmode="numeric">
           </label>
-          <label>Weight (kg)
-            <input id="profile-weight" type="number" min="30" max="350" step="0.1" inputmode="decimal" required>
+          <div id="height-us-wrap" class="height-us">
+            <label>Height (ft)
+              <input id="profile-height-ft" type="number" min="3" max="8" inputmode="numeric">
+            </label>
+            <label>Height (in)
+              <input id="profile-height-in" type="number" min="0" max="11" inputmode="numeric">
+            </label>
+          </div>
+          <label><span id="weight-label">Weight (lb)</span>
+            <input id="profile-weight" type="number" min="30" max="800" step="0.1" inputmode="decimal" required>
           </label>
           <label>Activity level
             <select id="profile-activity" required>
@@ -97,6 +111,35 @@
       <section class="card">
         <h2>Macros</h2>
         <div id="macro-bars"></div>
+        <details class="target-editor">
+          <summary>Adjust targets</summary>
+          <p class="hint">
+            Recommended targets anchor protein to your body weight and goal.
+            Override any value here; leave a field blank to keep the
+            recommendation.
+          </p>
+          <form id="targets-form" novalidate>
+            <div class="form-grid">
+              <label>Calories (kcal)
+                <input id="target-kcal" type="number" min="800" max="10000" inputmode="numeric">
+              </label>
+              <label>Protein (g)
+                <input id="target-protein" type="number" min="0" max="2000" inputmode="numeric">
+              </label>
+              <label>Carbs (g)
+                <input id="target-carbs" type="number" min="0" max="2000" inputmode="numeric">
+              </label>
+              <label>Fat (g)
+                <input id="target-fat" type="number" min="0" max="2000" inputmode="numeric">
+              </label>
+            </div>
+            <div class="data-actions">
+              <button type="submit">Save targets</button>
+              <button type="button" id="targets-reset">Reset to recommended</button>
+            </div>
+            <p id="targets-feedback" class="feedback" aria-live="polite"></p>
+          </form>
+        </details>
       </section>
 
       <section class="card chart-card">
@@ -158,6 +201,30 @@
     <section class="card">
       <h2>Food log</h2>
       <div id="meal-sections"></div>
+    </section>
+
+    <section class="card">
+      <h2>Online food search <span class="badge-optional">optional</span></h2>
+      <p class="hint">
+        Search hundreds of thousands of branded grocery products from the USDA
+        FoodData Central database (a free U.S. government service). Off by
+        default. When enabled, <strong>only the search words you type</strong>
+        are sent to the USDA — never your profile, weight, food log, or any
+        identifier. Foods you pick are saved to your device for offline reuse.
+      </p>
+      <form id="usda-form" novalidate>
+        <div class="data-actions">
+          <label class="toggle-label">
+            <input id="usda-enabled" type="checkbox"> Enable USDA search
+          </label>
+          <label class="key-label">API key
+            <input id="usda-key" type="text" maxlength="60" autocomplete="off"
+                   placeholder="get a free key at api.data.gov/signup">
+          </label>
+          <button type="submit">Save</button>
+        </div>
+        <p id="usda-feedback" class="feedback" aria-live="polite"></p>
+      </form>
     </section>
 
     <section class="card data-card">

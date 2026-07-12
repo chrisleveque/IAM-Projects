@@ -90,23 +90,62 @@
   /* Profile / setup view                                              */
   /* ---------------------------------------------------------------- */
 
+  function currentUnits() {
+    return document.getElementById("profile-units").value === "metric" ? "metric" : "us";
+  }
+
+  /* Show the height/weight fields matching the chosen unit system. */
+  function applyUnitsToForm(units) {
+    const metric = units === "metric";
+    document.getElementById("height-metric-label").hidden = !metric;
+    document.getElementById("height-us-wrap").hidden = metric;
+    document.getElementById("weight-label").textContent = metric ? "Weight (kg)" : "Weight (lb)";
+  }
+
+  /* Read the form and normalize to metric for validation/storage. */
   function readProfileForm() {
+    const units = currentUnits();
+    let heightCm;
+    let weightKg;
+    if (units === "metric") {
+      heightCm = Number(document.getElementById("profile-height").value);
+      weightKg = Number(document.getElementById("profile-weight").value);
+    } else {
+      const ft = Number(document.getElementById("profile-height-ft").value);
+      const inch = Number(document.getElementById("profile-height-in").value || 0);
+      heightCm = N.ftInToCm(ft, inch);
+      weightKg = N.lbToKg(Number(document.getElementById("profile-weight").value));
+    }
     return {
       sex: document.getElementById("profile-sex").value,
       age: document.getElementById("profile-age").value,
-      heightCm: document.getElementById("profile-height").value,
-      weightKg: document.getElementById("profile-weight").value,
+      heightCm,
+      weightKg: Math.round(weightKg * 10) / 10,
       activity: document.getElementById("profile-activity").value,
       goal: document.getElementById("profile-goal").value,
+      units,
     };
   }
 
   function fillProfileForm(profile) {
-    if (!profile) return;
+    if (!profile) {
+      applyUnitsToForm(currentUnits());
+      return;
+    }
+    const units = profile.units || "metric";
+    document.getElementById("profile-units").value = units;
+    applyUnitsToForm(units);
     document.getElementById("profile-sex").value = profile.sex;
     document.getElementById("profile-age").value = profile.age;
-    document.getElementById("profile-height").value = profile.heightCm;
-    document.getElementById("profile-weight").value = profile.weightKg;
+    if (units === "metric") {
+      document.getElementById("profile-height").value = Math.round(profile.heightCm);
+      document.getElementById("profile-weight").value = profile.weightKg;
+    } else {
+      const { ft, inch } = N.cmToFtIn(profile.heightCm);
+      document.getElementById("profile-height-ft").value = ft;
+      document.getElementById("profile-height-in").value = inch;
+      document.getElementById("profile-weight").value = Math.round(N.kgToLb(profile.weightKg));
+    }
     document.getElementById("profile-activity").value = profile.activity;
     document.getElementById("profile-goal").value = profile.goal;
   }
@@ -389,27 +428,161 @@
   }
 
   /* ---------------------------------------------------------------- */
+  /* Target overrides                                                   */
+  /* ---------------------------------------------------------------- */
+
+  function fillTargetsForm() {
+    const o = state.targets || {};
+    document.getElementById("target-kcal").value = o.kcal !== undefined ? o.kcal : "";
+    document.getElementById("target-protein").value = o.proteinG !== undefined ? o.proteinG : "";
+    document.getElementById("target-carbs").value = o.carbsG !== undefined ? o.carbsG : "";
+    document.getElementById("target-fat").value = o.fatG !== undefined ? o.fatG : "";
+    const recommended = N.dailyTargets(state.profile);
+    document.getElementById("target-kcal").placeholder = recommended.kcal;
+    document.getElementById("target-protein").placeholder = recommended.proteinG;
+    document.getElementById("target-carbs").placeholder = recommended.carbsG;
+    document.getElementById("target-fat").placeholder = recommended.fatG;
+  }
+
+  function onSaveTargets(event) {
+    event.preventDefault();
+    state.targets = N.validateTargetOverrides({
+      kcal: document.getElementById("target-kcal").value,
+      proteinG: document.getElementById("target-protein").value,
+      carbsG: document.getElementById("target-carbs").value,
+      fatG: document.getElementById("target-fat").value,
+    });
+    persist();
+    document.getElementById("targets-feedback").textContent = state.targets
+      ? "Custom targets saved."
+      : "Using recommended targets.";
+    render();
+  }
+
+  function onResetTargets() {
+    state.targets = null;
+    persist();
+    fillTargetsForm();
+    document.getElementById("targets-feedback").textContent = "Back to recommended targets.";
+    render();
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Optional USDA online search                                        */
+  /* ---------------------------------------------------------------- */
+
+  const USDA_ENDPOINT = "https://api.nal.usda.gov/fdc/v1/foods/search";
+
+  function fillUsdaForm() {
+    document.getElementById("usda-enabled").checked = state.settings.onlineSearch;
+    document.getElementById("usda-key").value = state.settings.usdaApiKey;
+  }
+
+  function onSaveUsda(event) {
+    event.preventDefault();
+    const feedback = document.getElementById("usda-feedback");
+    const wanted = document.getElementById("usda-enabled").checked;
+    state.settings = N.validateSettings({
+      onlineSearch: wanted,
+      usdaApiKey: document.getElementById("usda-key").value.trim(),
+    });
+    persist();
+    fillUsdaForm();
+    if (wanted && !state.settings.onlineSearch) {
+      feedback.textContent = "Enter a valid API key (letters and numbers) to enable search.";
+    } else {
+      feedback.textContent = state.settings.onlineSearch
+        ? "USDA search is on. Only your search words are ever sent."
+        : "USDA search is off. The app makes no network requests.";
+    }
+  }
+
+  async function searchUsda(query) {
+    const params = new URLSearchParams({
+      api_key: state.settings.usdaApiKey,
+      query,
+      pageSize: "10",
+      dataType: "Branded,Foundation,SR Legacy",
+    });
+    const response = await fetch(`${USDA_ENDPOINT}?${params}`, { method: "GET" });
+    if (!response.ok) throw new Error(`USDA responded ${response.status}`);
+    const data = await response.json();
+    const foods = [];
+    if (data && Array.isArray(data.foods)) {
+      for (const item of data.foods.slice(0, 10)) {
+        const mapped = N.validateFood(N.mapUsdaFood(item));
+        if (mapped) foods.push(mapped);
+      }
+    }
+    return foods;
+  }
+
+  /* ---------------------------------------------------------------- */
   /* Add-food form                                                     */
   /* ---------------------------------------------------------------- */
 
   let searchSelection = null;
 
-  function renderSearchResults(results) {
+  function selectFood(food, fromUsda) {
+    searchSelection = food;
+    document.getElementById("food-search").value = food.name;
+    clearNode(document.getElementById("search-results"));
+    document.getElementById("food-grams").focus();
+    if (fromUsda) {
+      // Keep picked USDA foods on-device so they work offline next time.
+      const exists = state.customFoods.some((f) => f.name === food.name);
+      if (!exists && state.customFoods.length < 500) {
+        state.customFoods.push({
+          name: food.name,
+          kcal: food.kcal,
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+        });
+        persist();
+      }
+    }
+  }
+
+  function resultButton(food, fromUsda) {
+    const button = el("button", "search-result");
+    button.type = "button";
+    button.appendChild(el("span", "search-result-name", food.name));
+    button.appendChild(
+      el("span", "search-result-kcal", `${fmt(food.kcal)} kcal / 100 g${fromUsda ? " · USDA" : ""}`)
+    );
+    button.addEventListener("click", () => selectFood(food, fromUsda));
+    return button;
+  }
+
+  function renderSearchResults(results, query) {
     const mount = document.getElementById("search-results");
     clearNode(mount);
-    if (!results.length) return;
-    for (const food of results) {
-      const button = el("button", "search-result");
-      button.type = "button";
-      button.appendChild(el("span", "search-result-name", food.name));
-      button.appendChild(el("span", "search-result-kcal", `${fmt(food.kcal)} kcal / 100 g`));
-      button.addEventListener("click", () => {
-        searchSelection = food;
-        document.getElementById("food-search").value = food.name;
-        clearNode(mount);
-        document.getElementById("food-grams").focus();
+    for (const food of results) mount.appendChild(resultButton(food, false));
+
+    if (state.settings.onlineSearch && query && query.trim().length >= 2) {
+      const online = el("button", "search-result search-online");
+      online.type = "button";
+      online.appendChild(el("span", "search-result-name", `Search USDA for “${query.trim()}”`));
+      online.appendChild(el("span", "search-result-kcal", "online"));
+      online.addEventListener("click", async () => {
+        online.disabled = true;
+        online.firstChild.textContent = "Searching USDA…";
+        try {
+          const foods = await searchUsda(query.trim());
+          online.remove();
+          if (!foods.length) {
+            mount.appendChild(el("p", "feedback", "No USDA matches found."));
+          }
+          for (const food of foods) mount.appendChild(resultButton(food, true));
+        } catch (err) {
+          online.remove();
+          mount.appendChild(
+            el("p", "feedback", "USDA search failed — check your connection, API key, or rate limit.")
+          );
+        }
       });
-      mount.appendChild(button);
+      mount.appendChild(online);
     }
   }
 
@@ -505,6 +678,8 @@
       state = imported;
       persist();
       announce("Data imported.");
+      fillProfileForm(state.profile);
+      fillUsdaForm();
       render();
     };
     reader.readAsText(file);
@@ -534,13 +709,14 @@
     setup.hidden = true;
     dashboard.hidden = false;
 
-    const targets = N.dailyTargets(state.profile);
+    const targets = N.dailyTargets(state.profile, state.targets);
     const totals = N.dayTotals(entriesFor(N.dateKey(viewDate)));
     renderDateNav();
     renderRing(totals, targets);
     renderMacros(totals, targets);
     renderWeekChart(targets);
     renderLog();
+    fillTargetsForm();
   }
 
   /* ---------------------------------------------------------------- */
@@ -551,6 +727,9 @@
     document.getElementById("profile-form").addEventListener("submit", onProfileSubmit);
     document.getElementById("add-form").addEventListener("submit", onAddEntry);
     document.getElementById("custom-form").addEventListener("submit", onAddCustomFood);
+    document.getElementById("targets-form").addEventListener("submit", onSaveTargets);
+    document.getElementById("targets-reset").addEventListener("click", onResetTargets);
+    document.getElementById("usda-form").addEventListener("submit", onSaveUsda);
     document.getElementById("export-btn").addEventListener("click", onExport);
     document.getElementById("import-input").addEventListener("change", onImportFile);
     document.getElementById("reset-btn").addEventListener("click", onReset);
@@ -559,10 +738,13 @@
       fillProfileForm(state.profile);
       render();
     });
+    document.getElementById("profile-units").addEventListener("change", () => {
+      applyUnitsToForm(currentUnits());
+    });
 
     document.getElementById("food-search").addEventListener("input", (e) => {
       searchSelection = null;
-      renderSearchResults(searchFoods(e.target.value));
+      renderSearchResults(searchFoods(e.target.value), e.target.value);
     });
 
     document.getElementById("date-prev").addEventListener("click", () => {
@@ -575,6 +757,7 @@
     });
 
     fillProfileForm(state.profile);
+    fillUsdaForm();
     render();
   }
 

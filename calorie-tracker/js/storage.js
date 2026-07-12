@@ -11,7 +11,14 @@
   const STORAGE_KEY = "calorie-tracker.v1";
 
   function emptyState() {
-    return { version: 1, profile: null, customFoods: [], log: {} };
+    return {
+      version: 1,
+      profile: null,
+      targets: null,
+      settings: { onlineSearch: false, usdaApiKey: "" },
+      customFoods: [],
+      log: {},
+    };
   }
 
   function load() {
