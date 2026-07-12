@@ -27,7 +27,23 @@ public-domain dataset.
 - **Accessible** — keyboard-navigable chart bars, ARIA labels and live
   regions, light and dark themes, colorblind-safe palette.
 
-## Running it
+## Installing on iPhone / iPad (PWA)
+
+The app is a Progressive Web App: once it's hosted over HTTPS you can
+install it on iOS like a native app — free, no App Store or Mac required.
+
+1. **Host it.** This repo ships a GitHub Actions workflow
+   (`.github/workflows/deploy-pages.yml`) that runs the tests and publishes
+   the app to GitHub Pages on every push. In the repo go to
+   **Settings → Pages** and set **Source: GitHub Actions** (one time), then
+   the site appears at `https://<user>.github.io/<repo>/`.
+2. **Open that URL in Safari** on your iPhone.
+3. Tap the **Share** button → **Add to Home Screen** → **Add**.
+
+You now have a full-screen app with its own icon that works offline (a
+service worker caches the app shell) and keeps all data on the device.
+
+## Running it locally
 
 It's a static site — no build step, no dependencies.
 
@@ -37,8 +53,9 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-Or deploy the folder to any static host (GitHub Pages works out of the box).
-Opening `index.html` directly from disk also works in most browsers.
+Or deploy the folder to any static host. Opening `index.html` directly from
+disk also works in most browsers (without the offline service worker, which
+requires HTTPS or localhost).
 
 ## Running the tests
 

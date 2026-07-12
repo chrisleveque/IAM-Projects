@@ -44,7 +44,9 @@
 body {
   margin: 0 auto;
   max-width: 760px;
-  padding: 0 16px 48px;
+  padding: env(safe-area-inset-top) calc(16px + env(safe-area-inset-right))
+    calc(48px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  -webkit-tap-highlight-color: transparent;
   background: var(--page);
   color: var(--text-primary);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
