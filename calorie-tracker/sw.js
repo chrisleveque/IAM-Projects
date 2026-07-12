@@ -10,7 +10,7 @@
  */
 "use strict";
 
-const CACHE_NAME = "calorie-tracker-v4";
+const CACHE_NAME = "calorie-tracker-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -18,6 +18,7 @@ const APP_SHELL = [
   "./css/styles.css",
   "./js/nutrition.js",
   "./js/foods.js",
+  "./js/barcode.js",
   "./js/storage.js",
   "./js/app.js",
   "./js/sw-register.js",

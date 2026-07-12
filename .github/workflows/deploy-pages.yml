@@ -24,7 +24,9 @@ jobs:
         with:
           node-version: 20
       - name: Run unit tests
-        run: node calorie-tracker/tests/nutrition.test.js
+        run: |
+          node calorie-tracker/tests/nutrition.test.js
+          node calorie-tracker/tests/barcode.test.js
 
   deploy:
     needs: test

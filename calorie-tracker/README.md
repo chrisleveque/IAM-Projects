@@ -25,9 +25,11 @@ public-domain dataset.
   products. Only your search words are sent — never your profile or log.
   Picked foods are saved on-device for offline reuse.
 - **Barcode lookup** — with online lookup enabled, scan a product barcode
-  (camera scanning where the browser supports it, manual number entry
-  everywhere) and pull its nutrition from Open Food Facts. Only the barcode
-  number is sent.
+  with the camera on any platform: the native BarcodeDetector API where
+  available (Android Chrome), or the app's own built-in EAN-13/UPC-A decoder
+  (`js/barcode.js`) on iOS Safari and elsewhere. Camera frames are processed
+  entirely on-device; only the decoded barcode number is sent to Open Food
+  Facts. Manual number entry always remains available.
 - **Weight trend** — log your weight (lb or kg) and see a 30-day trend chart;
   logging also updates your profile so recommendations stay current.
 - **Custom foods** — add your own foods with per-100 g nutrition values.

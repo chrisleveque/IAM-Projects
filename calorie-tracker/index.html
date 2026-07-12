@@ -159,7 +159,11 @@
           <button type="button" id="barcode-btn" hidden>Scan barcode</button>
         </div>
         <div id="barcode-panel" class="barcode-panel" hidden>
-          <video id="barcode-video" playsinline hidden></video>
+          <video id="barcode-video" playsinline muted hidden></video>
+          <p id="barcode-hint" class="hint" hidden>
+            Hold the barcode flat and horizontal, fairly close, in good light.
+            Scanning happens on your device — camera images are never uploaded.
+          </p>
           <div class="add-row">
             <label>Barcode number
               <input id="barcode-input" type="text" inputmode="numeric" maxlength="14"
@@ -288,6 +292,7 @@
 
   <script src="js/nutrition.js"></script>
   <script src="js/foods.js"></script>
+  <script src="js/barcode.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/app.js"></script>
   <script src="js/sw-register.js"></script>

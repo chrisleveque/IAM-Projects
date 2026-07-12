@@ -8,7 +8,7 @@
 "use strict";
 
 (function () {
-  const APP_VERSION = "1.3.0"; // bump on every release, with sw.js CACHE_NAME
+  const APP_VERSION = "1.4.0"; // bump on every release, with sw.js CACHE_NAME
   const N = window.Nutrition;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const MEALS = ["breakfast", "lunch", "dinner", "snacks"];
@@ -565,15 +565,24 @@
     }
   }
 
-  /* Camera scanning via the BarcodeDetector API where the browser has it
-   * (Android Chrome). Elsewhere (including iOS Safari today) the manual
-   * number field is the fallback. */
+  /* Camera scanning: the native BarcodeDetector API where the browser has
+   * it (Android Chrome — fast path), otherwise our own EAN-13/UPC-A decoder
+   * in js/barcode.js (iOS Safari and everything else). Frames never leave
+   * the device either way. Manual number entry always remains available. */
+  function acceptScan(code) {
+    document.getElementById("barcode-input").value = code;
+    stopBarcodeCamera();
+    lookupBarcode(code);
+  }
+
   async function startBarcodeCamera() {
-    if (!("BarcodeDetector" in window) || !navigator.mediaDevices) return;
+    if (!navigator.mediaDevices || (!("BarcodeDetector" in window) && !window.BarcodeDecoder)) {
+      return;
+    }
     const video = document.getElementById("barcode-video");
     try {
       barcodeStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode: "environment", width: { ideal: 1280 } },
         audio: false,
       });
     } catch (err) {
@@ -581,27 +590,66 @@
     }
     video.srcObject = barcodeStream;
     video.hidden = false;
-    await video.play();
-    const detector = new window.BarcodeDetector({
-      formats: ["ean_13", "ean_8", "upc_a", "upc_e"],
-    });
+    document.getElementById("barcode-hint").hidden = false;
+    try {
+      await video.play();
+    } catch (err) {
+      /* panel closed while the camera was still starting */
+    }
+    if (!barcodeStream) return; // stopped mid-start
     barcodeScanning = true;
-    const scan = async () => {
-      if (!barcodeScanning) return;
-      try {
-        const codes = await detector.detect(video);
-        if (codes.length && N.BARCODE_RE.test(codes[0].rawValue)) {
-          document.getElementById("barcode-input").value = codes[0].rawValue;
-          stopBarcodeCamera();
-          lookupBarcode(codes[0].rawValue);
-          return;
+
+    if ("BarcodeDetector" in window) {
+      const detector = new window.BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e"],
+      });
+      const scan = async () => {
+        if (!barcodeScanning) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length && N.BARCODE_RE.test(codes[0].rawValue)) {
+            acceptScan(codes[0].rawValue);
+            return;
+          }
+        } catch (err) {
+          /* detector hiccup — keep trying */
         }
-      } catch (err) {
-        /* detector hiccup — keep trying */
-      }
+        requestAnimationFrame(scan);
+      };
       requestAnimationFrame(scan);
+      return;
+    }
+
+    // JS decoder path: sample ~8 frames/sec, require the same code from two
+    // consecutive frames before accepting (checksum already guards each read).
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    let lastCode = null;
+    const scan = () => {
+      if (!barcodeScanning) return;
+      if (video.videoWidth > 0) {
+        const width = 800;
+        const height = Math.round((video.videoHeight / video.videoWidth) * width);
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(video, 0, 0, width, height);
+        let code = null;
+        try {
+          code = window.BarcodeDecoder.decodeImageData(ctx.getImageData(0, 0, width, height));
+        } catch (err) {
+          /* canvas hiccup — keep trying */
+        }
+        if (code && N.BARCODE_RE.test(code)) {
+          if (code === lastCode) {
+            acceptScan(code);
+            return;
+          }
+          lastCode = code;
+        }
+      }
+      setTimeout(scan, 125);
     };
-    requestAnimationFrame(scan);
+    setTimeout(scan, 125);
   }
 
   function stopBarcodeCamera() {
@@ -613,6 +661,7 @@
     const video = document.getElementById("barcode-video");
     video.srcObject = null;
     video.hidden = true;
+    document.getElementById("barcode-hint").hidden = true;
   }
 
   function openBarcodePanel() {
