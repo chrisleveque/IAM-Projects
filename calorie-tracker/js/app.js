@@ -8,6 +8,7 @@
 "use strict";
 
 (function () {
+  const APP_VERSION = "1.3.0"; // bump on every release, with sw.js CACHE_NAME
   const N = window.Nutrition;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const MEALS = ["breakfast", "lunch", "dinner", "snacks"];
@@ -978,6 +979,7 @@
       render();
     });
 
+    document.getElementById("app-version").textContent = `App version ${APP_VERSION}.`;
     fillProfileForm(state.profile);
     fillUsdaForm();
     render();

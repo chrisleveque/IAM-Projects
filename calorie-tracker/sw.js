@@ -1,14 +1,16 @@
 /*
  * sw.js — service worker for offline use.
  *
- * Strategy: precache the app shell on install; serve same-origin GET
- * requests cache-first, refreshing the cache in the background
- * (stale-while-revalidate) so updates arrive on the next visit.
+ * Strategy: the app shell is precached atomically on install and served
+ * cache-first. Shell files are NEVER refreshed individually at runtime —
+ * that could mix files from two releases. Updates ship as a whole: bump
+ * CACHE_NAME, the browser installs the new worker, and the register script
+ * reloads the page once the new worker takes control.
  * Nothing cross-origin is ever fetched or cached.
  */
 "use strict";
 
-const CACHE_NAME = "calorie-tracker-v3";
+const CACHE_NAME = "calorie-tracker-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -47,18 +49,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // same-origin only
 
+  // Cache-first from the versioned precache; network for anything else.
+  // No runtime writes into the shell cache — releases stay atomic.
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const refresh = fetch(request)
-        .then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached); // offline: fall back to cache
-      return cached || refresh;
-    })
+    caches.match(request).then((cached) => cached || fetch(request))
   );
 });
