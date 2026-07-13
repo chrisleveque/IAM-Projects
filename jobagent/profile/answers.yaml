@@ -1,0 +1,32 @@
+# REPLACE ME: canned answers used to pre-fill application forms.
+# The form-filler matches question text against these; anything it can't
+# answer gets drafted by the AI and shown to you for confirmation first.
+
+contact:
+  full_name: "Chris Leveque"
+  email: "chrisleveque25@gmail.com"
+  phone: "(555) 555-5555"
+  city: "City, ST"
+  linkedin: "https://www.linkedin.com/in/your-handle"
+
+work_authorization:
+  authorized_to_work_us: true
+  require_sponsorship: false
+
+preferences:
+  willing_to_relocate: false
+  desired_salary: "125000"
+  notice_period_days: 14
+
+years_experience:
+  default: "5"
+  by_skill:
+    okta: "4"
+    "active directory": "6"
+    sailpoint: "2"
+
+# Free-form rules checked first: if any keyword in `match` appears in the
+# question, `answer` is used. Confirmed AI-drafted answers get saved here too.
+custom_answers:
+  - match: ["security clearance"]
+    answer: "No"

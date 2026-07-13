@@ -1,0 +1,16 @@
+# Secrets and per-user state — never commit these
+.env
+browser_profile/
+output/
+*.db
+
+# Personal data: keep your real resume/answers local if you prefer
+# (templates are committed; uncomment to ignore your filled-in versions)
+# profile/master_resume.md
+# profile/answers.yaml
+
+__pycache__/
+*.egg-info/
+.pytest_cache/
+build/
+dist/

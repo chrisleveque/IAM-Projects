@@ -1,0 +1,34 @@
+# Job searches to run with `jobagent scan`.
+# source: linkedin | indeed
+searches:
+  - source: linkedin
+    query: "Identity and Access Management Engineer"
+    location: "United States"
+    easy_apply_only: true
+    max_results: 25
+  - source: indeed
+    query: "IAM Engineer"
+    location: "Remote"
+    easy_apply_only: true
+    max_results: 25
+
+# Safety rails. Keep these conservative — aggressive automation gets accounts
+# flagged. The apply step always stops before the final Submit click.
+limits:
+  max_applications_per_day: 10
+  min_action_delay_seconds: 2.0    # pause between clicks/keystrokes on a page
+  max_action_delay_seconds: 6.0
+  min_job_delay_seconds: 20.0      # pause between jobs
+  max_job_delay_seconds: 60.0
+
+scoring:
+  min_score_to_tailor: 60          # 0-100; jobs below this are not tailored
+
+ai:
+  model: claude-sonnet-5
+  max_tokens: 4096
+
+paths:
+  output_dir: output               # tailored resumes/cover letters land here
+  db_path: jobagent.db             # SQLite job tracker
+  browser_profile: browser_profile # persistent logged-in Chrome profile
