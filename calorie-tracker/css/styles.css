@@ -1,0 +1,574 @@
+/* styles.css — theme tokens + layout. Light and dark are both selected
+ * palettes (validated), not an automatic inversion. */
+
+:root {
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --border: rgba(11, 11, 11, 0.1);
+  --series-1: #2a78d6; /* blue   — calories / protein */
+  --series-2: #1baf7a; /* aqua   — carbs   */
+  --series-3: #eda100; /* yellow — fat     */
+  --status-over: #d03b3b;
+  --ring-track: #e1e0d9;
+  --chart-goal: #898781;
+  --chart-baseline: #c3c2b7;
+  --focus: #2a78d6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-2: #199e70;
+    --series-3: #c98500;
+    --status-over: #e66767;
+    --ring-track: #2c2c2a;
+    --chart-goal: #898781;
+    --chart-baseline: #383835;
+    --focus: #3987e5;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  max-width: 760px;
+  padding: env(safe-area-inset-top) calc(16px + env(safe-area-inset-right))
+    calc(48px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  -webkit-tap-highlight-color: transparent;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.45;
+}
+
+h1, h2, h3 {
+  font-weight: 650;
+  margin: 0 0 8px;
+}
+
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.95rem; }
+
+.app-header {
+  padding: 24px 0 4px;
+}
+
+.tagline,
+.hint {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0 0 8px;
+}
+
+.app-footer p {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-top: 32px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.status-region {
+  min-height: 1.2em;
+  margin: 4px 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* ---------- forms ---------- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+input, select, button {
+  font: inherit;
+  color: var(--text-primary);
+}
+
+input, select {
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+input:focus-visible, select:focus-visible, button:focus-visible,
+.week-bar:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--series-1);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+button.danger {
+  color: var(--status-over);
+  border-color: var(--status-over);
+}
+
+.error-list {
+  color: var(--status-over);
+  font-size: 0.875rem;
+  padding-left: 18px;
+  margin: 8px 0;
+}
+
+.feedback {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  min-height: 1.2em;
+  margin: 8px 0 0;
+}
+
+/* ---------- dashboard ---------- */
+
+.date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.date-nav button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 1.1rem;
+}
+
+.date-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#date-label {
+  min-width: 130px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 16px;
+}
+
+/* calorie ring */
+
+.ring-wrap {
+  position: relative;
+  width: 168px;
+  margin: 8px auto;
+}
+
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ring-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+}
+
+.ring-caption {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.ring-remaining {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.ring-remaining.over {
+  color: var(--status-over);
+  font-weight: 600;
+}
+
+/* macro bars */
+
+.macro-row {
+  margin: 10px 0;
+}
+
+.macro-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  margin-bottom: 4px;
+}
+
+.macro-label {
+  color: var(--text-secondary);
+}
+
+.macro-value {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--ring-track);
+  overflow: hidden;
+}
+
+.macro-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* week chart */
+
+.week-chart {
+  position: relative;
+}
+
+.week-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.week-bar {
+  cursor: pointer;
+}
+
+.week-bar:hover {
+  opacity: 0.85;
+}
+
+.week-axis-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-family: inherit;
+}
+
+.week-goal-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-family: inherit;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  background: var(--text-primary);
+  color: var(--surface);
+  font-size: 0.78rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ---------- add food ---------- */
+
+.search-label {
+  width: 100%;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.search-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  padding: 8px 12px;
+}
+
+.search-result:hover {
+  border-color: var(--series-1);
+}
+
+.search-result-kcal {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.meal-picker {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.meal-picker legend {
+  font-size: 0.875rem;
+  padding: 0 0 4px;
+}
+
+.meal-picker label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-food {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.custom-food summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.custom-food form {
+  margin-top: 12px;
+}
+
+/* ---------- food log ---------- */
+
+.meal-section {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+}
+
+.meal-section:first-child {
+  border-top: none;
+}
+
+.meal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.meal-kcal {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.meal-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 4px 0;
+}
+
+.entry-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.entry-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.entry-name {
+  font-size: 0.925rem;
+  overflow-wrap: anywhere;
+}
+
+.entry-detail {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry-remove {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 6px 8px;
+}
+
+.entry-remove:hover {
+  color: var(--status-over);
+}
+
+/* ---------- targets, units & USDA settings ---------- */
+
+.height-us {
+  display: flex;
+  gap: 12px;
+}
+
+.height-us label {
+  flex: 1;
+}
+
+.target-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.target-editor summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.target-editor form {
+  margin-top: 10px;
+}
+
+.badge-optional {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  vertical-align: middle;
+}
+
+.toggle-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.925rem;
+  color: var(--text-primary);
+}
+
+.key-label {
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-online .search-result-name {
+  color: var(--series-1);
+}
+
+/* ---------- barcode panel ---------- */
+
+.search-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.search-row .search-label {
+  flex: 1;
+}
+
+.barcode-panel {
+  margin-top: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+#barcode-video {
+  width: 100%;
+  max-height: 220px;
+  border-radius: 8px;
+  background: #000;
+  margin-bottom: 8px;
+}
+
+/* ---------- data actions ---------- */
+
+.data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.import-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.import-label input {
+  display: none;
+}
