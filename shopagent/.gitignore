@@ -1,0 +1,7 @@
+.env
+*.db
+.cj_token.json
+output/
+__pycache__/
+*.egg-info/
+.pytest_cache/

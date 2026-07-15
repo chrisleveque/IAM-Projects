@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shopagent"
+version = "0.1.0"
+description = "AI agent team for a Shopify dropshipping business: research, list, fulfill, support, market — with a human approval gate on every action"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.40",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+shopagent = "shopagent.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
