@@ -106,6 +106,27 @@ def test_pipeline_survives_agent_failure(store, cfg, shopify, cj):
     assert "model unavailable" in ran[0]["error"]
 
 
+def test_daily_pipeline_emits_progress_events(store, cfg, shopify, cj):
+    for i in range(3):
+        store.upsert_product(f"CJ-{i}", f"Thing {i}", niche="pet accessories")
+    events: list[tuple[str, dict]] = []
+    ai = ScriptedPerAgentAI([FakeAIClient(final_text="orders handled"),
+                             FakeAIClient(final_text="inbox handled")])
+    Orchestrator(ai, store, cfg, shopify, cj).run_daily(
+        on_event=lambda kind, data: events.append((kind, data)))
+
+    # every run gets a start followed by a done; skips emit a single skip event
+    assert [(k, d["agent"]) for k, d in events] == [
+        ("start", "fulfillment"), ("done", "fulfillment"),
+        ("start", "support"), ("done", "support"),
+        ("skip", "research"),
+        ("skip", "listings"),
+        ("skip", "marketing"),
+    ]
+    done_fulfillment = events[1][1]
+    assert done_fulfillment["ok"] and done_fulfillment["summary"] == "orders handled"
+
+
 def test_research_skipped_when_pool_full(store, cfg, shopify, cj):
     for i in range(3):
         store.upsert_product(f"CJ-{i}", f"Thing {i}", niche="pet accessories")

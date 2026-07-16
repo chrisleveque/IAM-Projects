@@ -48,22 +48,33 @@ class Orchestrator:
                 counts[p["niche"]] += 1
         return min(niches, key=lambda n: counts[n])
 
-    def run_daily(self) -> dict:
+    def run_daily(self, on_event=None) -> dict:
         """Fulfillment -> support -> research (if pool is low) -> listings ->
-        marketing (if anything is newly listed). Returns a step-by-step summary."""
+        marketing (if anything is newly listed). Returns a step-by-step summary.
+
+        ``on_event(kind, data)`` is called as the pipeline progresses so callers
+        can show live output: kind is 'start' ({agent}), 'skip' or 'done' (the
+        step entry that was appended to the summary).
+        """
+        notify = on_event or (lambda kind, data: None)
         summary: dict = {"steps": [], "pending_approvals": 0}
 
         def step(name: str, task: str, skip_reason: str | None = None):
             if skip_reason:
-                summary["steps"].append({"agent": name, "skipped": skip_reason})
+                entry = {"agent": name, "skipped": skip_reason}
+                summary["steps"].append(entry)
+                notify("skip", entry)
                 return
+            notify("start", {"agent": name})
             try:
                 result = self.run_task(name, task)
-                summary["steps"].append({"agent": name, "ok": True,
-                                         "tool_calls": result.tool_calls,
-                                         "summary": result.text[:300]})
+                entry = {"agent": name, "ok": True,
+                         "tool_calls": result.tool_calls,
+                         "summary": result.text[:300]}
             except Exception as exc:
-                summary["steps"].append({"agent": name, "ok": False, "error": str(exc)[:300]})
+                entry = {"agent": name, "ok": False, "error": str(exc)[:300]}
+            summary["steps"].append(entry)
+            notify("done", entry)
 
         step("fulfillment",
              "Run your standard workflow: sync store orders, propose CJ orders for "
