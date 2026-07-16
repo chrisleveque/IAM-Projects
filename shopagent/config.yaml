@@ -1,0 +1,34 @@
+# shopagent configuration.
+# mode: dry_run (default) uses built-in mock Shopify/CJ backends — safe to explore.
+#       live uses real APIs for any integration whose credentials are set in .env;
+#       integrations with missing credentials fall back to mock with a warning.
+mode: dry_run
+
+store:
+  shop_domain: ""            # e.g. your-store.myshopify.com (overrides SHOPIFY_STORE_DOMAIN if set)
+  api_version: "2025-07"
+
+supplier:
+  name: cj
+  ship_to_country: US
+
+business:
+  niches:
+    - pet accessories
+    - home organization
+    - fitness gear
+  pricing:
+    markup_multiplier: 2.5   # proposed retail = supplier cost * multiplier (rounded to .99)
+    min_margin_usd: 3.0      # skip candidates that can't clear this margin
+  max_new_products_per_run: 5
+  min_candidate_pool: 3      # research runs in the daily pipeline when shortlist drops below this
+
+ai:
+  model: claude-opus-4-8
+  max_tokens: 8192
+  max_tool_iterations: 20
+
+paths:
+  db_path: shopagent.db
+  output_dir: output
+  inbox_dir: inbox
