@@ -157,14 +157,21 @@ def run(pipeline: str = typer.Argument("daily", help="Pipeline to run (only: dai
     cfg = _cfg()
     _mode_banner(cfg)
     store = _store(cfg)
-    summary = _orchestrator(cfg, store).run_daily()
-    for step in summary["steps"]:
-        if step.get("skipped"):
-            console.print(f"  [dim]{step['agent']}: skipped — {step['skipped']}[/dim]")
-        elif step.get("ok"):
-            console.print(f"  [green]{step['agent']}[/green]: {step['summary'].splitlines()[0] if step['summary'] else 'done'}")
+    console.print("[dim]each agent is a multi-step AI conversation — "
+                  "expect a minute or two per agent[/dim]")
+
+    def on_event(kind: str, data: dict) -> None:
+        if kind == "start":
+            console.print(f"  {data['agent']}: [cyan]running…[/cyan]")
+        elif kind == "skip":
+            console.print(f"  [dim]{data['agent']}: skipped — {data['skipped']}[/dim]")
+        elif data.get("ok"):
+            first = data["summary"].splitlines()[0] if data.get("summary") else "done"
+            console.print(f"  [green]{data['agent']}[/green]: {first}")
         else:
-            console.print(f"  [red]{step['agent']}: {step['error']}[/red]")
+            console.print(f"  [red]{data['agent']}: {data['error']}[/red]")
+
+    summary = _orchestrator(cfg, store).run_daily(on_event=on_event)
     if summary["pending_approvals"]:
         console.print(Panel(f"[bold]{summary['pending_approvals']} action(s) now pending "
                             "approval[/bold] — run [cyan]shopagent approvals list[/cyan]",
