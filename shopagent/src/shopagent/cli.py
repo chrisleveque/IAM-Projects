@@ -250,7 +250,7 @@ def _seed_mock_inbox(cfg: AppConfig) -> None:
         return
     from .integrations.fixtures import INBOX_MESSAGES
     for name, content in INBOX_MESSAGES.items():
-        (inbox / name).write_text(content)
+        (inbox / name).write_text(content, encoding="utf-8")
 
 
 # ------------------------------------------------------------------ approvals

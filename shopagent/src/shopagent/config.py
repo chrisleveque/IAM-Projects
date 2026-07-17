@@ -112,7 +112,7 @@ def load_config(root: Path | str | None = None) -> AppConfig:
     data: dict = {}
     cfg_file = root_path / "config.yaml"
     if cfg_file.exists():
-        data = yaml.safe_load(cfg_file.read_text()) or {}
+        data = yaml.safe_load(cfg_file.read_text(encoding="utf-8")) or {}
     if data.get("mode") not in (None, *MODES):
         raise ValueError(f"config.yaml mode must be one of {MODES}, got {data['mode']!r}")
     cfg = AppConfig(**data)

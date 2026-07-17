@@ -79,7 +79,7 @@ class SupportAgent(Agent):
     def _read_message(self, inp: dict) -> dict:
         for p in self._inbox_files():
             if p.name == inp["filename"]:
-                return {"filename": p.name, "content": p.read_text()}
+                return {"filename": p.name, "content": p.read_text(encoding="utf-8")}
         return {"error": f"no message {inp['filename']!r}"}
 
     def _lookup_order(self, inp: dict) -> dict:

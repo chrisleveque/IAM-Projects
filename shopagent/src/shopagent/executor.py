@@ -98,5 +98,6 @@ class Executor:
         out_dir = self.cfg.output_dir / subdir
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{stamp}_{slug}.md"
-        path.write_text(content)
+        # explicit utf-8: Windows defaults to cp1252, which chokes on emoji
+        path.write_text(content, encoding="utf-8")
         return path
