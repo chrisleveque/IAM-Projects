@@ -77,18 +77,21 @@ def test_support_reply_writes_file(store, executor, cfg):
     a = executor.execute(approval_id)
     assert a.status == "executed"
     written = json.loads(a.result)["written_to"]
-    content = open(written).read()
+    content = open(written, encoding="utf-8").read()
     assert "To: jamie@example.com" in content
     assert "It ships this week." in content
 
 
 def test_marketing_publish_writes_channel_dir(store, executor, cfg):
+    # emoji in the body: agents produce these routinely, and files must be
+    # written as utf-8 even where the platform default is cp1252 (Windows)
     approval_id = store.propose(Approval(
         action_type="marketing.publish", agent="marketing", title="Social post",
         payload={"channel": "social", "title": "Glow walkies",
-                 "body": "Night walks, but safe."}))
+                 "body": "Night walks, but safe. \U0001F415✨ #glowup"}))
     store.decide_approval(approval_id, "approved")
     a = executor.execute(approval_id)
     assert a.status == "executed"
     written = json.loads(a.result)["written_to"]
     assert "/marketing/social/" in written
+    assert "\U0001F415" in open(written, encoding="utf-8").read()

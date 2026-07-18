@@ -55,7 +55,7 @@ class CJClient:
 
     def _load_cached_token(self) -> str | None:
         try:
-            data = json.loads(self._token_cache.read_text())
+            data = json.loads(self._token_cache.read_text(encoding="utf-8"))
             if datetime.fromisoformat(data["expires_at"]) > datetime.now(timezone.utc):
                 return data["token"]
         except (OSError, ValueError, KeyError):
@@ -72,7 +72,7 @@ class CJClient:
         token = body["data"]["accessToken"]
         expires = datetime.now(timezone.utc) + timedelta(days=14)
         self._token_cache.write_text(json.dumps(
-            {"token": token, "expires_at": expires.isoformat()}))
+            {"token": token, "expires_at": expires.isoformat()}), encoding="utf-8")
         return token
 
     def _ensure_token(self) -> str:
