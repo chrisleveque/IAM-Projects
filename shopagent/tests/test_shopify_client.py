@@ -152,6 +152,22 @@ def test_client_credentials_bad_secret_message(tmp_path):
         client.get_shop()
 
 
+def test_client_credentials_redirect_names_correct_domain(tmp_path):
+    # a custom storefront domain in SHOPIFY_STORE_DOMAIN gets a 301 to the
+    # canonical myshopify domain; the error must tell the user what to fix
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/admin/oauth/access_token":
+            return httpx.Response(
+                301, headers={"location": "https://real-shop.myshopify.com/admin/oauth/access_token"})
+        raise AssertionError("should not reach GraphQL")
+
+    client = _cc_client(handler, tmp_path)
+    with pytest.raises(ShopifyError) as err:
+        client.get_shop()
+    assert "real-shop.myshopify.com" in str(err.value)
+    assert "SHOPIFY_STORE_DOMAIN" in str(err.value)
+
+
 def test_exactly_one_auth_source_required():
     with pytest.raises(ValueError):
         ShopifyClient("test.myshopify.com")  # neither token nor auth
