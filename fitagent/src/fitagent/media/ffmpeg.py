@@ -67,9 +67,15 @@ def probe(path: Path) -> dict:
     }
 
 
+def _audio_codec(out_path: Path) -> list[str]:
+    return (["-c:a", "libmp3lame", "-q:a", "4"] if out_path.suffix == ".mp3"
+            else ["-c:a", "pcm_s16le"])
+
+
 def make_silence(out_path: Path, seconds: float, log_path: Path | None = None) -> Path:
     run_ffmpeg(["-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
-                "-t", f"{seconds:.3f}", "-c:a", "pcm_s16le", str(out_path)], log_path)
+                "-t", f"{seconds:.3f}", *_audio_codec(out_path), str(out_path)],
+               log_path)
     return out_path
 
 
@@ -78,7 +84,7 @@ def make_tone(out_path: Path, seconds: float, freq: int = 220,
     """Low sine tone — stands in for a voiceover in mock TTS."""
     run_ffmpeg(["-f", "lavfi", "-i", f"sine=frequency={freq}:sample_rate=48000",
                 "-t", f"{seconds:.3f}", "-af", "volume=0.3",
-                "-c:a", "pcm_s16le", str(out_path)], log_path)
+                *_audio_codec(out_path), str(out_path)], log_path)
     return out_path
 
 
