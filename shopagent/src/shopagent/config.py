@@ -74,11 +74,20 @@ class AppConfig(BaseModel):
     def shop_domain(self) -> str:
         return self.store.shop_domain or os.environ.get("SHOPIFY_STORE_DOMAIN", "")
 
+    def shopify_auth_method(self) -> str:
+        """'token' (legacy shpat_), 'client_credentials' (Dev Dashboard apps,
+        the only kind creatable since Jan 2026), or 'none'."""
+        if os.environ.get("SHOPIFY_ACCESS_TOKEN"):
+            return "token"
+        if os.environ.get("SHOPIFY_CLIENT_ID") and os.environ.get("SHOPIFY_CLIENT_SECRET"):
+            return "client_credentials"
+        return "none"
+
     def shopify_mode(self) -> str:
         """Effective mode for the Shopify integration: 'live' or 'mock'."""
         if self.mode != "live":
             return "mock"
-        if self.shop_domain and os.environ.get("SHOPIFY_ACCESS_TOKEN"):
+        if self.shop_domain and self.shopify_auth_method() != "none":
             return "live"
         return "mock"
 

@@ -126,14 +126,19 @@ def doctor() -> None:
         ("ANTHROPIC_API_KEY", bool(os.environ.get("ANTHROPIC_API_KEY")),
          "required for agents to reason"),
         ("SHOPIFY_STORE_DOMAIN", bool(cfg.shop_domain), "for live Shopify"),
+        ("SHOPIFY_CLIENT_ID", bool(os.environ.get("SHOPIFY_CLIENT_ID")),
+         "Dev Dashboard app auth"),
+        ("SHOPIFY_CLIENT_SECRET", bool(os.environ.get("SHOPIFY_CLIENT_SECRET")),
+         "Dev Dashboard app auth"),
         ("SHOPIFY_ACCESS_TOKEN", bool(os.environ.get("SHOPIFY_ACCESS_TOKEN")),
-         "for live Shopify"),
+         "legacy shpat_ token, pre-2026 apps only"),
         ("CJ_EMAIL", bool(os.environ.get("CJ_EMAIL")), "for live CJ Dropshipping"),
         ("CJ_API_KEY", bool(os.environ.get("CJ_API_KEY")), "for live CJ Dropshipping"),
     ]
     for name, ok, why in checks:
         mark = "[green]set[/green]" if ok else "[yellow]missing[/yellow]"
         console.print(f"  {name}: {mark}  ({why})")
+    console.print(f"  shopify auth method: {cfg.shopify_auth_method()}")
     try:
         store = _store(cfg)
         store.conn.execute("SELECT 1")

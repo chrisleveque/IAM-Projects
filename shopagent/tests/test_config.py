@@ -17,12 +17,35 @@ def test_invalid_mode_rejected(tmp_path):
 
 
 def test_live_mode_without_credentials_degrades_to_mock(tmp_path, monkeypatch):
-    for var in ("SHOPIFY_STORE_DOMAIN", "SHOPIFY_ACCESS_TOKEN", "CJ_EMAIL", "CJ_API_KEY"):
+    for var in ("SHOPIFY_STORE_DOMAIN", "SHOPIFY_ACCESS_TOKEN", "SHOPIFY_CLIENT_ID",
+                "SHOPIFY_CLIENT_SECRET", "CJ_EMAIL", "CJ_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     (tmp_path / "config.yaml").write_text("mode: live\n")
     cfg = load_config(tmp_path)
     assert cfg.shopify_mode() == "mock"
+    assert cfg.shopify_auth_method() == "none"
     assert cfg.cj_mode() == "mock"
+
+
+def test_live_mode_with_client_credentials(tmp_path, monkeypatch):
+    monkeypatch.delenv("SHOPIFY_ACCESS_TOKEN", raising=False)
+    monkeypatch.setenv("SHOPIFY_STORE_DOMAIN", "x.myshopify.com")
+    monkeypatch.setenv("SHOPIFY_CLIENT_ID", "cid")
+    monkeypatch.setenv("SHOPIFY_CLIENT_SECRET", "csecret")
+    (tmp_path / "config.yaml").write_text("mode: live\n")
+    cfg = load_config(tmp_path)
+    assert cfg.shopify_mode() == "live"
+    assert cfg.shopify_auth_method() == "client_credentials"
+
+
+def test_half_client_credentials_stays_mock(tmp_path, monkeypatch):
+    monkeypatch.delenv("SHOPIFY_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("SHOPIFY_CLIENT_SECRET", raising=False)
+    monkeypatch.setenv("SHOPIFY_STORE_DOMAIN", "x.myshopify.com")
+    monkeypatch.setenv("SHOPIFY_CLIENT_ID", "cid")
+    (tmp_path / "config.yaml").write_text("mode: live\n")
+    cfg = load_config(tmp_path)
+    assert cfg.shopify_mode() == "mock"
 
 
 def test_live_mode_with_credentials(tmp_path, monkeypatch):

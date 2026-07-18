@@ -103,18 +103,30 @@ Set `mode: live` in `config.yaml` **and** provide credentials in `.env`. Any
 integration whose credentials are missing quietly stays on the mock backend
 (the mode banner on every command shows the effective state per integration).
 
-### Connect your Shopify store (custom app + Admin API token)
+### Connect your Shopify store (Dev Dashboard app)
 
-1. In Shopify admin: **Settings → Apps and sales channels → Develop apps**
-   (enable custom app development if prompted).
-2. **Create an app**, name it e.g. `shopagent`.
-3. Under **Configuration → Admin API integration**, select scopes:
-   `read_products`, `write_products`, `read_orders`, `read_fulfillments`,
-   `write_fulfillments`, `read_customers`, `read_inventory`, `write_inventory`.
-4. **Install app**, then under **API credentials** reveal the Admin API access
-   token (`shpat_…`). **It is shown only once — copy it immediately.**
-5. In `.env`, set `SHOPIFY_STORE_DOMAIN=your-store.myshopify.com` and
-   `SHOPIFY_ACCESS_TOKEN=shpat_…`.
+Since January 1, 2026 custom apps are created in the **Dev Dashboard**
+(dev.shopify.com), and they no longer expose a permanent `shpat_` token.
+Instead the app has a Client ID + Client secret, and shopagent exchanges them
+for short-lived (~24h) Admin API tokens automatically (cached in the
+gitignored `.shopify_token.json`, refreshed on expiry).
+
+1. Go to **dev.shopify.com**, sign in with your store's account, and
+   **Create app** (e.g. `shopagent`). Choose "Start from Dev Dashboard".
+2. In the app's configuration, set the **App scopes**:
+   `read_products, write_products, read_orders, read_fulfillments,
+   write_fulfillments, read_customers, read_inventory, write_inventory` —
+   then **Release** the version (config takes effect only when released).
+3. From the app's **Home** panel, click **Install app** and pick your store.
+   Client-credential tokens only work for stores in your own organization
+   with the app installed.
+4. From the app's **Settings** page, copy the **Client ID** and
+   **Client secret**.
+5. In `.env`, set `SHOPIFY_STORE_DOMAIN=your-store.myshopify.com`,
+   `SHOPIFY_CLIENT_ID=…` and `SHOPIFY_CLIENT_SECRET=…`.
+
+(If you still have a pre-2026 custom app with a `shpat_` token, set
+`SHOPIFY_ACCESS_TOKEN` instead — it takes precedence.)
 
 ### Connect CJ Dropshipping
 
