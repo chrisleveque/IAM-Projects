@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+fitagent.db
+output/
+.youtube_token*.json
+client_secret*.json
+assets/music/*.mp3
+assets/music/*.wav
+assets/music/*.m4a
+assets/fonts/*.ttf
+assets/fonts/*.otf
