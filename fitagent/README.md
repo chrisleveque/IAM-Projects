@@ -78,6 +78,48 @@ Run the tests (no network, no keys; render tests auto-skip without ffmpeg):
 python -m pytest tests/
 ```
 
+## Quickstart on Windows
+
+Everything works natively on Windows (no WSL needed) — edge-tts, ffmpeg,
+and the pipeline are all cross-platform. In **PowerShell**:
+
+```powershell
+# 1. One-time tools (restart the terminal after installing)
+winget install Python.Python.3.12
+winget install Git.Git
+winget install Gyan.FFmpeg          # puts ffmpeg/ffprobe on PATH
+
+# 2. Get the code
+git clone https://github.com/chrisleveque/IAM-Projects.git
+cd IAM-Projects\fitagent
+
+# 3. Isolated Python environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+#   (if activation is blocked, run once:
+#    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned)
+pip install -e ".[dev]"
+
+# 4. Configure
+copy .env.example .env
+notepad .env                        # paste your ANTHROPIC_API_KEY
+
+# 5. Produce a video
+fitagent doctor
+fitagent run
+fitagent queue                      # then open the file under output\runs\...\final\
+```
+
+Windows notes:
+- `ffmpeg -version` should work in a **new** terminal after winget; if not,
+  log out/in so PATH refreshes.
+- Captions default to the DejaVu Sans font; if it's not installed, libass
+  falls back to Arial automatically — or drop an OFL font (e.g. Oswald)
+  into `assets\fonts\`.
+- For a daily schedule, use **Task Scheduler** with the action
+  `powershell -Command "cd C:\path\to\IAM-Projects\fitagent; .venv\Scripts\fitagent.exe run"`
+  (the cron equivalent on Windows).
+
 ## Going live
 
 1. **Stock footage** (free): get keys at pexels.com/api and
