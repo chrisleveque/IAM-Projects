@@ -1,0 +1,57 @@
+# fitagent configuration. `mode: dry_run` mocks stock footage and YouTube;
+# TTS (edge, free) and the Claude agents are always real so a dry run still
+# produces a watchable video. Set `mode: live` plus API keys in .env to pull
+# real stock footage and enable real uploads.
+mode: dry_run
+
+active_preset: forge
+
+presets:
+  forge:
+    channel_name: "The Forge"
+    niche: "men's fitness & discipline motivation"
+    tone: "dark, gritty, stoic; earned intensity, no toxic positivity"
+    audience: "men 18-40 pushing through training and life plateaus"
+    original_ratio: 0.8          # share of videos with original scripts vs public domain
+    tts:
+      provider: edge             # edge (free) | elevenlabs (paid) | mock (tests)
+      voice: en-US-ChristopherNeural
+      rate: "-8%"
+      pitch: "-4Hz"
+    seo_hints: ["gym motivation", "discipline", "stoicism", "mental toughness"]
+
+video:
+  long_form:
+    min_minutes: 5
+    max_minutes: 10
+    width: 1920
+    height: 1080
+    fps: 30
+    crf: 20
+  shorts:
+    count: 3
+    max_seconds: 58
+    width: 1080
+    height: 1920
+
+audio:
+  voice_lufs: -16
+  final_lufs: -14
+  music_volume: 0.9
+  duck_ratio: 8
+
+publishing:
+  auto_upload: false             # true = uploads run without the CLI approval step
+  default_privacy: private       # private | unlisted | public
+  category_id: "22"              # People & Blogs
+
+ai:
+  model: claude-opus-4-8
+  max_tokens: 8192
+  max_tool_iterations: 24
+
+paths:
+  db_path: fitagent.db
+  output_dir: output
+  assets_dir: assets
+  youtube_client_secrets: client_secret.json
