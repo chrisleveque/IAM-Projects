@@ -67,6 +67,15 @@ class ClientCredentialsAuth:
                   "client_secret": self._client_secret},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
+        if resp.status_code in (301, 302, 307, 308):
+            location = resp.headers.get("location", "")
+            raise ShopifyError(
+                "token request was redirected"
+                + (f" to {location}" if location else "")
+                + " — SHOPIFY_STORE_DOMAIN must be the canonical *.myshopify.com "
+                "domain, not a custom storefront domain. Find it in the admin URL: "
+                "admin.shopify.com/store/<handle> means <handle>.myshopify.com."
+            )
         if resp.status_code != 200:
             raise ShopifyError(
                 f"token request failed ({resp.status_code}): {resp.text[:300]}. "

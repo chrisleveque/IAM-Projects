@@ -72,7 +72,8 @@ class AppConfig(BaseModel):
 
     @property
     def shop_domain(self) -> str:
-        return self.store.shop_domain or os.environ.get("SHOPIFY_STORE_DOMAIN", "")
+        raw = self.store.shop_domain or os.environ.get("SHOPIFY_STORE_DOMAIN", "")
+        return normalize_shop_domain(raw)
 
     def shopify_auth_method(self) -> str:
         """'token' (legacy shpat_), 'client_credentials' (Dev Dashboard apps,
@@ -98,6 +99,13 @@ class AppConfig(BaseModel):
         if os.environ.get("CJ_EMAIL") and os.environ.get("CJ_API_KEY"):
             return "live"
         return "mock"
+
+
+def normalize_shop_domain(raw: str) -> str:
+    """Clean common paste mistakes: scheme, path, trailing slash, whitespace.
+    'https://x.myshopify.com/admin' -> 'x.myshopify.com'."""
+    domain = raw.strip().removeprefix("https://").removeprefix("http://")
+    return domain.split("/", 1)[0]
 
 
 def find_root(start: Path | None = None) -> Path:

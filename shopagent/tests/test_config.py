@@ -1,6 +1,19 @@
 import pytest
 
-from shopagent.config import AppConfig, load_config
+from shopagent.config import AppConfig, load_config, normalize_shop_domain
+
+
+def test_normalize_shop_domain():
+    assert normalize_shop_domain(" https://x.myshopify.com/ ") == "x.myshopify.com"
+    assert normalize_shop_domain("http://x.myshopify.com/admin") == "x.myshopify.com"
+    assert normalize_shop_domain("cbm3b0-cs.myshopify.com") == "cbm3b0-cs.myshopify.com"
+    assert normalize_shop_domain("") == ""
+
+
+def test_shop_domain_env_is_normalized(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHOPIFY_STORE_DOMAIN", "https://x.myshopify.com/")
+    cfg = load_config(tmp_path)
+    assert cfg.shop_domain == "x.myshopify.com"
 
 
 def test_defaults_are_dry_run(tmp_path):
