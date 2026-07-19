@@ -34,5 +34,4 @@ def score_job(ai, master_resume: str, job: Job) -> ScoreResult:
         f"MASTER RESUME:\n{master_resume}\n\n"
         f"JOB POSTING ({job.title} at {job.company}, {job.location}):\n{job.description}"
     )
-    data = ai.complete_json(SYSTEM, user, max_tokens=1024)
-    return ScoreResult.model_validate(data)
+    return ai.parse(SYSTEM, user, ScoreResult, max_tokens=1024)

@@ -9,7 +9,7 @@ description = "Semi-automated job application copilot for LinkedIn and Indeed: s
 requires-python = ">=3.10"
 dependencies = [
     "playwright>=1.45",
-    "anthropic>=0.40",
+    "anthropic>=0.69",
     "typer>=0.12",
     "pydantic>=2.7",
     "python-docx>=1.1",
