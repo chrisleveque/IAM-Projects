@@ -25,12 +25,22 @@ class BrowserSession:
         profile_dir = self.cfg.resolve(self.cfg.paths.browser_profile)
         profile_dir.mkdir(parents=True, exist_ok=True)
         self._pw = sync_playwright().start()
-        self.context = self._pw.chromium.launch_persistent_context(
-            str(profile_dir),
+        launch_kwargs = dict(
             headless=False,
             viewport={"width": 1440, "height": 900},
             args=["--disable-blink-features=AutomationControlled"],
         )
+        try:
+            # Prefer the user's installed Google Chrome: bot protection
+            # (Indeed/Cloudflare, Google SSO) fingerprints bundled Chromium as
+            # automation and blocks logins; real Chrome passes far more often.
+            self.context = self._pw.chromium.launch_persistent_context(
+                str(profile_dir), channel="chrome", **launch_kwargs
+            )
+        except Exception:
+            self.context = self._pw.chromium.launch_persistent_context(
+                str(profile_dir), **launch_kwargs
+            )
         self.context.set_default_timeout(15_000)
         return self
 
