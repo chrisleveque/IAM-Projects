@@ -24,6 +24,13 @@ limits:
 scoring:
   min_score_to_tailor: 60          # 0-100; jobs below this are not tailored
 
+# Drop unwanted listings at scan time (and hide already-tracked matches on
+# the next scan). Regions are keyword packs defined in filters.py.
+filters:
+  exclude_regions: [europe, middle_east]
+  exclude_location_keywords: []    # extra location substrings to block
+  exclude_title_special_chars: true  # drop emoji/symbol-laden spam titles
+
 ai:
   model: claude-sonnet-5
   max_tokens: 4096

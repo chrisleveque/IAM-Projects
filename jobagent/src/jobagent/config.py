@@ -30,6 +30,12 @@ class ScoringConfig(BaseModel):
     min_score_to_tailor: int = 60
 
 
+class FiltersConfig(BaseModel):
+    exclude_regions: list[str] = Field(default_factory=list)
+    exclude_location_keywords: list[str] = Field(default_factory=list)
+    exclude_title_special_chars: bool = False
+
+
 class AIConfig(BaseModel):
     model: str = "claude-sonnet-5"
     max_tokens: int = 4096
@@ -47,6 +53,7 @@ class AppConfig(BaseModel):
     searches: list[SearchSpec] = Field(default_factory=list)
     limits: Limits = Field(default_factory=Limits)
     scoring: ScoringConfig = Field(default_factory=ScoringConfig)
+    filters: FiltersConfig = Field(default_factory=FiltersConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     root: Path = Path(".")

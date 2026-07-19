@@ -54,6 +54,12 @@ playwright install chromium
    authorization, salary, etc. These pre-fill the repetitive application
    questions.
 4. **Searches**: edit `config.yaml` with your queries, locations, and limits.
+   The `filters:` section drops unwanted listings at scan time — exclude whole
+   regions by keyword pack (`europe`, `middle_east`), add your own
+   `exclude_location_keywords`, and set `exclude_title_special_chars: true` to
+   skip emoji/symbol-laden spam titles. Jobs already in the tracker that match
+   the filters are marked skipped on the next scan (applied jobs are never
+   touched).
 5. Check everything: `jobagent doctor`
 6. Log in once: `jobagent login` (a browser opens; log in to LinkedIn and
    Indeed yourself, 2FA and all — the session persists in `browser_profile/`,

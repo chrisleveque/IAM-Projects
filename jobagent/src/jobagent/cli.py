@@ -96,6 +96,7 @@ def scan(
 ):
     """Run the searches in config.yaml and store discovered jobs."""
     from .browser import BrowserSession
+    from .filters import FilteringStore, skip_existing_matches
     from .scrapers import indeed as indeed_scraper
     from .scrapers import linkedin as linkedin_scraper
 
@@ -105,6 +106,15 @@ def scan(
     if not searches and not saved:
         raise typer.Exit(code=_fail("no searches configured in config.yaml"))
 
+    hidden = skip_existing_matches(store, cfg.filters)
+    if hidden:
+        console.print(f"[dim]{len(hidden)} previously tracked job(s) now match "
+                      "your filters and were marked skipped[/dim]")
+
+    filtering = FilteringStore(
+        store, cfg.filters,
+        on_skip=lambda job, reason: console.print(
+            f"[dim]filtered out: {job.title or job.url} — {reason}[/dim]"))
     total_new = 0
     with BrowserSession(cfg) as session:
         for spec in searches:
@@ -112,10 +122,13 @@ def scan(
             if scraper is None:
                 console.print(f"[yellow]unknown source '{spec.source}' — skipping[/yellow]")
                 continue
-            total_new += scraper.scan(session, store, spec, console)
+            total_new += scraper.scan(session, filtering, spec, console)
             session.job_pause()
         if saved and (source in (None, "linkedin")):
-            total_new += linkedin_scraper.scan_saved(session, store, console)
+            total_new += linkedin_scraper.scan_saved(session, filtering, console)
+    if filtering.skipped:
+        console.print(f"[dim]{filtering.skipped} listing(s) filtered out by "
+                      "config.yaml filters[/dim]")
     console.print(f"\n[bold]{total_new} new job(s) discovered.[/bold] "
                   "Next: [cyan]jobagent score[/cyan]")
 
