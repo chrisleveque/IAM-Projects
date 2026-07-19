@@ -26,6 +26,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -38,6 +39,20 @@ BASE_URL = "https://developers.cjdropshipping.com/api2.0/v1"
 
 class CJError(RuntimeError):
     pass
+
+
+def parse_price_range(value) -> tuple[float, float]:
+    """CJ price fields may be a number, a numeric string, or a range across
+    variants like '3.39 -- 4.37'. Returns (low, high); (0.0, 0.0) if unparseable."""
+    if value is None:
+        return (0.0, 0.0)
+    if isinstance(value, (int, float)):
+        return (float(value), float(value))
+    nums = re.findall(r"\d+(?:\.\d+)?", str(value))
+    if not nums:
+        return (0.0, 0.0)
+    vals = [float(n) for n in nums]
+    return (min(vals), max(vals))
 
 
 class CJClient:
@@ -108,10 +123,12 @@ class CJClient:
                                      "pageSize": page_size})
         out = []
         for item in data.get("list", []):
+            low, high = parse_price_range(item.get("sellPrice"))
             out.append({
                 "pid": item.get("pid", ""),
                 "name": item.get("productNameEn", ""),
-                "sell_price": float(item.get("sellPrice") or 0),
+                "sell_price": low,
+                "sell_price_max": high,
                 "category": item.get("categoryName", ""),
                 "description": "",
             })
@@ -122,13 +139,18 @@ class CJClient:
         if not data:
             return None
         variants = data.get("variants") or []
+        low, high = parse_price_range(data.get("sellPrice"))
+        variant_low, _ = parse_price_range(variants[0].get("variantSellPrice")
+                                           if variants else None)
         return {
             "pid": data.get("pid", pid),
             "vid": variants[0].get("vid", "") if variants else "",
             "name": data.get("productNameEn", ""),
-            "sell_price": float(data.get("sellPrice") or 0),
+            "sell_price": variant_low or low,
+            "sell_price_max": high,
             "category": data.get("categoryName", ""),
             "description": data.get("description", ""),
+            "variant_count": len(variants),
         }
 
     def freight_calculate(self, vid: str, quantity: int, country: str = "US") -> dict:
@@ -138,9 +160,14 @@ class CJClient:
         options = data if isinstance(data, list) else []
         if not options:
             return {"logistic_name": "", "freight_usd": None, "days": ""}
-        best = min(options, key=lambda o: float(o.get("logisticPrice") or 1e9))
+
+        def price_of(option: dict) -> float:
+            low, _ = parse_price_range(option.get("logisticPrice"))
+            return low or 1e9
+
+        best = min(options, key=price_of)
         return {"logistic_name": best.get("logisticName", ""),
-                "freight_usd": float(best.get("logisticPrice") or 0),
+                "freight_usd": parse_price_range(best.get("logisticPrice"))[0],
                 "days": best.get("logisticAging", "")}
 
     def create_order(self, order_ref: str, cj_items: list[dict],

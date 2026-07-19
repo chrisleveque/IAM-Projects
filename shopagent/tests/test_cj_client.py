@@ -3,7 +3,17 @@ import json
 import httpx
 import pytest
 
-from shopagent.integrations.cj_client import CJClient, CJError, MockCJClient
+from shopagent.integrations.cj_client import (CJClient, CJError, MockCJClient,
+                                              parse_price_range)
+
+
+def test_parse_price_range():
+    assert parse_price_range("3.39 -- 4.37") == (3.39, 4.37)
+    assert parse_price_range("4.39 -- 16.42") == (4.39, 16.42)
+    assert parse_price_range("5.10") == (5.10, 5.10)
+    assert parse_price_range(7) == (7.0, 7.0)
+    assert parse_price_range(None) == (0.0, 0.0)
+    assert parse_price_range("") == (0.0, 0.0)
 
 
 # ------------------------------------------------------------------ mock CJ
@@ -93,6 +103,48 @@ def test_api_level_error_raises(tmp_path):
     client = _client_with(handler, tmp_path)
     with pytest.raises(CJError, match="quota exceeded"):
         client.search_products("pet")
+
+
+def test_search_handles_variant_price_ranges(tmp_path):
+    # the live catalog returns sellPrice as a range string when variants
+    # differ in price — this crashed search entirely before
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/authentication/getAccessToken"):
+            return httpx.Response(200, json={"result": True,
+                                             "data": {"accessToken": "tok"}})
+        return httpx.Response(200, json={"result": True, "data": {"list": [
+            {"pid": "P1", "productNameEn": "Dog Collar",
+             "sellPrice": "3.39 -- 4.37", "categoryName": "Pets"},
+            {"pid": "P2", "productNameEn": "Cat Brush",
+             "sellPrice": 5.1, "categoryName": "Pets"},
+        ]}})
+
+    client = _client_with(handler, tmp_path)
+    hits = client.search_products("pet")
+    assert hits[0]["sell_price"] == 3.39
+    assert hits[0]["sell_price_max"] == 4.37
+    assert hits[1]["sell_price"] == 5.1
+    assert hits[1]["sell_price_max"] == 5.1
+
+
+def test_get_product_prefers_variant_price(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/authentication/getAccessToken"):
+            return httpx.Response(200, json={"result": True,
+                                             "data": {"accessToken": "tok"}})
+        return httpx.Response(200, json={"result": True, "data": {
+            "pid": "P1", "productNameEn": "Dog Collar",
+            "sellPrice": "3.39 -- 4.37", "categoryName": "Pets",
+            "description": "d",
+            "variants": [{"vid": "V1", "variantSellPrice": 3.39}],
+        }})
+
+    client = _client_with(handler, tmp_path)
+    product = client.get_product("P1")
+    assert product["vid"] == "V1"
+    assert product["sell_price"] == 3.39
+    assert product["sell_price_max"] == 4.37
+    assert product["variant_count"] == 1
 
 
 def test_create_order_payload_shape(tmp_path):
