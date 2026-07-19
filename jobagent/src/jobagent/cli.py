@@ -69,8 +69,21 @@ def login():
         console.print("Log in to [bold]LinkedIn[/bold] in the browser window "
                       "(2FA/captcha included).")
         Prompt.ask("Press Enter here when LinkedIn is logged in", default="")
-        page.goto("https://secure.indeed.com/auth")
-        console.print("Now log in to [bold]Indeed[/bold].")
+        # Open Indeed in a fresh tab: right after login the LinkedIn tab is often
+        # still mid-redirect, and a goto() on it dies with "interrupted by
+        # another navigation".
+        indeed_page = session.new_page()
+        for attempt in range(3):
+            try:
+                indeed_page.goto("https://secure.indeed.com/auth",
+                                 wait_until="domcontentloaded")
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                indeed_page.wait_for_timeout(2000)
+        console.print("Now log in to [bold]Indeed[/bold] (tip: enter your email "
+                      "and choose the sign-in code option — no password needed).")
         Prompt.ask("Press Enter here when Indeed is logged in", default="")
     console.print("[green]Sessions saved to the local browser profile. "
                   "You won't need to log in again unless they expire.[/green]")
