@@ -163,7 +163,8 @@ class FormContext:
         self.answers.setdefault("custom_answers", []).append(rule)
         try:
             self.answers_path.write_text(
-                yaml.safe_dump(self.answers, sort_keys=False, allow_unicode=True)
+                yaml.safe_dump(self.answers, sort_keys=False, allow_unicode=True),
+                encoding="utf-8",
             )
         except OSError as exc:
             self.console.print(f"[yellow]Could not save answer: {exc}[/yellow]")

@@ -33,7 +33,7 @@ def _master_resume(cfg: AppConfig) -> str:
     path = cfg.master_resume_path
     if not path.exists():
         raise typer.Exit(code=_fail(f"master resume not found at {path}"))
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     if "REPLACE ME" in text:
         raise typer.Exit(code=_fail(
             f"{path} still contains the template marker — paste your real resume "
@@ -45,7 +45,7 @@ def _answers(cfg: AppConfig) -> dict:
     path = cfg.answers_path
     if not path.exists():
         return {}
-    return yaml.safe_load(path.read_text()) or {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def _ai(cfg: AppConfig):
@@ -316,11 +316,11 @@ def doctor():
     check("config.yaml", (cfg.root / "config.yaml").exists())
     check("searches configured", bool(cfg.searches))
     resume_path = cfg.master_resume_path
-    resume_ready = resume_path.exists() and "REPLACE ME" not in resume_path.read_text()
+    resume_ready = resume_path.exists() and "REPLACE ME" not in resume_path.read_text(encoding="utf-8")
     check("master resume filled in", resume_ready,
           f"— edit {resume_path} (remove the REPLACE ME comment)")
     answers_path = cfg.answers_path
-    answers_ready = answers_path.exists() and "REPLACE ME" not in answers_path.read_text()
+    answers_ready = answers_path.exists() and "REPLACE ME" not in answers_path.read_text(encoding="utf-8")
     check("answers.yaml filled in", answers_ready,
           f"— edit {answers_path} (remove the REPLACE ME line)")
     import os

@@ -92,7 +92,7 @@ def load_config(root: Path | str | None = None) -> AppConfig:
     data: dict = {}
     cfg_file = root_path / "config.yaml"
     if cfg_file.exists():
-        data = yaml.safe_load(cfg_file.read_text()) or {}
+        data = yaml.safe_load(cfg_file.read_text(encoding="utf-8")) or {}
     cfg = AppConfig(**data)
     cfg.root = root_path
     return cfg
