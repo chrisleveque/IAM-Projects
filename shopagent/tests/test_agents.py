@@ -123,6 +123,28 @@ def test_fulfillment_unmapped_items_reported(store, cfg, shopify, cj):
     assert mapped["unmapped"]
 
 
+def test_fulfillment_agent_proposes_shopify_fulfillment(store, cfg, shopify, cj):
+    order_id = store.upsert_order("gid://shopify/Order/8000000001",
+                                  order_number="#1001")
+    store.update_order(order_id, status="cj_placed", cj_order_id="MOCKCJ000001")
+    ai = FakeAIClient(script=[
+        ("update_order_status", {"order_id": order_id, "status": "shipped",
+                                 "tracking_number": "CJMOCK000001"}),
+        ("propose_action", {"action_type": "shopify.fulfill_order",
+                            "title": "Mark #1001 fulfilled with tracking",
+                            "payload": {"shopify_order_id": "gid://shopify/Order/8000000001",
+                                        "tracking_number": "CJMOCK000001",
+                                        "notify_customer": True},
+                            "rationale": "CJ shipped it",
+                            "ref_table": "orders", "ref_id": order_id}),
+    ])
+    FulfillmentAgent(ai, store, cfg, shopify=shopify, cj=cj).run("track")
+    pending = store.list_approvals("pending")
+    assert len(pending) == 1
+    assert pending[0].action_type == "shopify.fulfill_order"
+    assert store.get_order(order_id)["status"] == "shipped"
+
+
 def test_support_agent_reads_inbox_and_proposes_reply(store, cfg):
     (cfg.inbox_dir / "msg.txt").write_text(
         "From: jamie.rivera@example.com\nSubject: Where is #1001?\n\nAny update?\n")

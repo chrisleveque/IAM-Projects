@@ -20,8 +20,10 @@ def test_only_approved_actions_execute(store, executor):
 
 
 def test_create_product_writes_back_to_pipeline(store, executor, shopify):
-    product_id = store.upsert_product("CJ-PET-001", "Travel Bowl",
-                                      proposed_price=9.99)
+    product_id = store.upsert_product(
+        "CJ-PET-001", "Travel Bowl", proposed_price=9.99,
+        images_json=json.dumps(["https://mock.cjimg.example/CJ-PET-001/1.jpg",
+                                "https://mock.cjimg.example/CJ-PET-001/2.jpg"]))
     approval_id = store.propose(Approval(
         action_type="shopify.create_product", agent="listings",
         title="List Travel Bowl",
@@ -34,7 +36,40 @@ def test_create_product_writes_back_to_pipeline(store, executor, shopify):
     product = store.get_product(product_id)
     assert product["status"] == "listed"
     assert product["shopify_product_id"]
-    assert any(p["title"] == "Travel Bowl" for p in shopify.list_products())
+    created = next(p for p in shopify.list_products() if p["title"] == "Travel Bowl")
+    # supplier photos from the pipeline row are attached automatically
+    assert len(created["images"]) == 2
+    assert json.loads(a.result)["images_attached"] == 2
+
+
+def test_fulfill_order_marks_shopify_and_pipeline(store, executor, shopify):
+    order_id = store.upsert_order("gid://shopify/Order/8000000001",
+                                  order_number="#1001")
+    store.update_order(order_id, status="cj_placed", cj_order_id="MOCKCJ000001")
+    approval_id = store.propose(Approval(
+        action_type="shopify.fulfill_order", agent="fulfillment",
+        title="Fulfill #1001 in Shopify with tracking",
+        payload={"shopify_order_id": "gid://shopify/Order/8000000001",
+                 "tracking_number": "CJMOCK000001", "notify_customer": True},
+        ref_table="orders", ref_id=order_id))
+    store.decide_approval(approval_id, "approved")
+    a = executor.execute(approval_id)
+    assert a.status == "executed"
+    order = store.get_order(order_id)
+    assert order["status"] == "shipped"
+    assert order["tracking_number"] == "CJMOCK000001"
+    shopify_order = shopify.get_order("gid://shopify/Order/8000000001")
+    assert shopify_order["displayFulfillmentStatus"] == "FULFILLED"
+
+    # fulfilling twice fails cleanly instead of double-notifying the customer
+    again = store.propose(Approval(
+        action_type="shopify.fulfill_order", agent="fulfillment", title="dup",
+        payload={"shopify_order_id": "gid://shopify/Order/8000000001",
+                 "tracking_number": "CJMOCK000001"}))
+    store.decide_approval(again, "approved")
+    a = executor.execute(again)
+    assert a.status == "failed"
+    assert "already fulfilled" in a.error
 
 
 def test_cj_order_writes_back_and_failure_is_retryable(store, executor, cj):

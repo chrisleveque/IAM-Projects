@@ -41,7 +41,8 @@ What executes what:
 
 | Action | On approval |
 |---|---|
-| `shopify.create_product` / `update_product` | Real Shopify Admin API call |
+| `shopify.create_product` / `update_product` | Real Shopify Admin API call (product photos from the CJ listing are attached automatically) |
+| `shopify.fulfill_order` | Marks the Shopify order fulfilled with the CJ tracking number and emails the customer |
 | `cj.create_order` | Real CJ Dropshipping order (costs money) |
 | `support.send_reply` | Writes a copy-ready reply to `output/replies/` (you send it) |
 | `marketing.publish` | Writes content to `output/marketing/` (you post it) |
@@ -173,6 +174,5 @@ src/shopagent/
 ## Roadmap ideas
 
 - Real inbox integration (Gmail/Shopify Inbox) instead of the `inbox/` directory
-- Automatic Shopify fulfillment + customer tracking emails once CJ ships
 - A second supplier implementation behind the same interface
 - Scheduled daily runs (cron) with a morning approval digest

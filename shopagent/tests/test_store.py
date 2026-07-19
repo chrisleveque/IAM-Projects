@@ -96,6 +96,34 @@ def test_order_upsert_preserves_cj_linkage(store):
     assert o["cj_order_id"] == "CJ123"
 
 
+def test_images_json_migration_for_old_databases(tmp_path):
+    import sqlite3
+
+    from shopagent.store import Store
+    # simulate a database created before the images_json column existed
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cj_product_id TEXT NOT NULL, cj_vid TEXT DEFAULT '',
+        name TEXT NOT NULL, niche TEXT DEFAULT '',
+        supplier_price REAL, shipping_estimate REAL, proposed_price REAL,
+        listing_json TEXT DEFAULT '', shopify_product_id TEXT DEFAULT '',
+        status TEXT DEFAULT 'candidate', notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(cj_product_id))""")
+    conn.execute("INSERT INTO products (cj_product_id, name, created_at, updated_at)"
+                 " VALUES ('CJ-OLD', 'Old Thing', 'x', 'x')")
+    conn.commit()
+    conn.close()
+
+    store = Store(db)  # must add the column without touching existing rows
+    p = store.list_products()[0]
+    assert p["name"] == "Old Thing"
+    assert p["images_json"] == "[]"
+    store.close()
+
+
 def test_agent_run_log(store):
     store.log_run("research", "find products", "ok", "saved 3", tool_calls=7,
                   input_tokens=100, output_tokens=50)

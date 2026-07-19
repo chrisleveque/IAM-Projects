@@ -6,6 +6,8 @@ shortlisted), so nothing here needs approval.
 
 from __future__ import annotations
 
+import json
+
 from .base import Agent
 
 
@@ -114,12 +116,20 @@ class ResearchAgent(Agent):
             return {"saved": False,
                     "reason": f"margin ${margin:.2f} below minimum "
                               f"${pricing.min_margin_usd:.2f} at retail ${price:.2f}"}
+        # grab supplier photos so listings can carry real product images;
+        # non-fatal if the lookup fails
+        try:
+            details = self.cj.get_product(inp["pid"]) or {}
+            images = details.get("images", [])
+        except Exception:
+            images = []
         product_id = self.store.upsert_product(
             inp["pid"], inp["name"],
             cj_vid=inp["vid"], niche=inp.get("niche", ""),
             supplier_price=inp["supplier_price"],
             shipping_estimate=inp["shipping_estimate"],
             proposed_price=price, notes=inp.get("notes", ""),
+            images_json=json.dumps(images),
         )
         if inp.get("shortlist"):
             self.store.update_product(product_id, status="shortlisted")

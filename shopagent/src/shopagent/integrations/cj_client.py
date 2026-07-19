@@ -55,6 +55,24 @@ def parse_price_range(value) -> tuple[float, float]:
     return (min(vals), max(vals))
 
 
+def parse_images(data: dict) -> list[str]:
+    """Extract image URLs from a CJ product payload. productImageSet is a list
+    when present; productImage may be a plain URL or a JSON-encoded list."""
+    image_set = data.get("productImageSet")
+    if isinstance(image_set, list) and image_set:
+        return [u for u in image_set if isinstance(u, str)][:6]
+    raw = data.get("productImage")
+    if isinstance(raw, str) and raw.strip().startswith("["):
+        try:
+            parsed = json.loads(raw)
+            return [u for u in parsed if isinstance(u, str)][:6]
+        except ValueError:
+            pass
+    if isinstance(raw, str) and raw:
+        return [raw]
+    return []
+
+
 class CJClient:
     def __init__(self, email: str, api_key: str, token_cache: Path, transport=None):
         import httpx  # lazy so importing the module needs no network stack
@@ -151,6 +169,7 @@ class CJClient:
             "category": data.get("categoryName", ""),
             "description": data.get("description", ""),
             "variant_count": len(variants),
+            "images": parse_images(data),
         }
 
     def freight_calculate(self, vid: str, quantity: int, country: str = "US") -> dict:
@@ -227,7 +246,10 @@ class MockCJClient:
     def get_product(self, pid: str) -> dict | None:
         for p in self._catalog:
             if p["pid"] == pid:
-                return copy.deepcopy(p)
+                product = copy.deepcopy(p)
+                product["images"] = [f"https://mock.cjimg.example/{pid}/{i}.jpg"
+                                     for i in range(1, 3)]
+                return product
         return None
 
     def freight_calculate(self, vid: str, quantity: int, country: str = "US") -> dict:
