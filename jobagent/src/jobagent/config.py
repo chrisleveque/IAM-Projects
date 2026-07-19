@@ -32,7 +32,7 @@ class ScoringConfig(BaseModel):
 
 class AIConfig(BaseModel):
     model: str = "claude-sonnet-5"
-    max_tokens: int = 4096
+    max_tokens: int = 8192
 
 
 class PathsConfig(BaseModel):
