@@ -47,22 +47,24 @@ def _ai(cfg: AppConfig):
 
 
 def _clients(cfg: AppConfig):
+    from .integrations.amazon_client import make_amazon_client
     from .integrations.cj_client import make_cj_client
     from .integrations.shopify_client import make_shopify_client
-    return make_shopify_client(cfg), make_cj_client(cfg)
+    return make_shopify_client(cfg), make_cj_client(cfg), make_amazon_client(cfg)
 
 
 def _orchestrator(cfg: AppConfig, store: Store):
     from .orchestrator import Orchestrator
-    shopify, cj = _clients(cfg)
-    return Orchestrator(_ai(cfg), store, cfg, shopify, cj)
+    shopify, cj, amazon = _clients(cfg)
+    return Orchestrator(_ai(cfg), store, cfg, shopify, cj, amazon=amazon)
 
 
 def _mode_banner(cfg: AppConfig) -> None:
-    shop, cj = cfg.shopify_mode(), cfg.cj_mode()
-    style = "yellow" if "mock" in (shop, cj) else "green"
-    console.print(f"[{style}]mode: {cfg.mode} | shopify: {shop} | cj: {cj}[/{style}]")
-    if cfg.mode == "live" and "mock" in (shop, cj):
+    shop, cj, amz = cfg.shopify_mode(), cfg.cj_mode(), cfg.amazon_mode()
+    style = "yellow" if "mock" in (shop, cj, amz) else "green"
+    console.print(f"[{style}]mode: {cfg.mode} | shopify: {shop} | cj: {cj} "
+                  f"| amazon: {amz}[/{style}]")
+    if cfg.mode == "live" and "mock" in (shop, cj, amz):
         console.print("[yellow]warning: live mode but missing credentials — "
                       "the mock backend is used for the integrations above[/yellow]")
 
@@ -134,6 +136,13 @@ def doctor() -> None:
          "legacy shpat_ token, pre-2026 apps only"),
         ("CJ_EMAIL", bool(os.environ.get("CJ_EMAIL")), "for live CJ Dropshipping"),
         ("CJ_API_KEY", bool(os.environ.get("CJ_API_KEY")), "for live CJ Dropshipping"),
+        ("AMZ_CLIENT_ID", bool(os.environ.get("AMZ_CLIENT_ID")), "Amazon SP-API app"),
+        ("AMZ_CLIENT_SECRET", bool(os.environ.get("AMZ_CLIENT_SECRET")),
+         "Amazon SP-API app"),
+        ("AMZ_REFRESH_TOKEN", bool(os.environ.get("AMZ_REFRESH_TOKEN")),
+         "Amazon SP-API self-authorization"),
+        ("AMZ_SELLER_ID", bool(os.environ.get("AMZ_SELLER_ID")),
+         "Seller Central merchant token"),
     ]
     for name, ok, why in checks:
         mark = "[green]set[/green]" if ok else "[yellow]missing[/yellow]"
@@ -145,13 +154,25 @@ def doctor() -> None:
         console.print(f"  database: [green]ok[/green] ({cfg.db_path})")
     except Exception as exc:
         console.print(f"  database: [red]{exc}[/red]")
+    shopify = cj = amazon = None
+    if cfg.shopify_mode() == "live" or cfg.amazon_mode() == "live":
+        shopify, cj, amazon = _clients(cfg)
     if cfg.shopify_mode() == "live":
-        shopify, _ = _clients(cfg)
         try:
             shop = shopify.get_shop()
             console.print(f"  shopify: [green]connected to {shop['name']}[/green]")
         except Exception as exc:
             console.print(f"  shopify: [red]{exc}[/red]")
+    if cfg.amazon_mode() == "live":
+        try:
+            seller = amazon.get_seller()
+            console.print(f"  amazon: [green]connected to {seller['marketplace']} "
+                          f"(seller {seller['seller_id']})[/green]")
+            console.print("  [dim]note: buyer addresses also need the "
+                          "Direct-to-Consumer Shipping role — if orders sync "
+                          "returns 403, see README[/dim]")
+        except Exception as exc:
+            console.print(f"  amazon: [red]{exc}[/red]")
 
 
 @app.command()
@@ -225,6 +246,27 @@ def support(action: str = typer.Argument("draft", help="Only: draft")) -> None:
     _seed_mock_inbox(cfg)
     result = _orchestrator(cfg, store).run_task(
         "support", "Handle every message currently in the inbox.")
+    console.print(result.text)
+
+
+@app.command()
+def amazon(action: str = typer.Argument("draft", help="Only: draft")) -> None:
+    """Have the Amazon agent cross-list store products onto Amazon (FBM)."""
+    if action != "draft":
+        raise typer.Exit(code=_fail(f"unknown amazon action {action!r}; only 'draft' exists"))
+    cfg = _cfg()
+    _mode_banner(cfg)
+    store = _store(cfg)
+    eligible = [p for p in store.list_products("listed") if not p.get("amazon_status")]
+    eligible += [p for p in store.list_products("drafted") if not p.get("amazon_status")]
+    if not eligible:
+        raise typer.Exit(code=_fail(
+            "no listed/drafted products without an Amazon status — list something "
+            "on the store first (research + draft listings)"))
+    ids = ", ".join(str(p["id"]) for p in eligible)
+    result = _orchestrator(cfg, store).run_task(
+        "amazon", f"Cross-list product ids {ids} onto Amazon: validate each "
+                  "listing before proposing it.")
     console.print(result.text)
 
 
@@ -308,8 +350,8 @@ def approvals_approve(approval_id: int) -> None:
         store.decide_approval(approval_id, "approved")
     except ValueError as exc:
         raise typer.Exit(code=_fail(str(exc)))
-    shopify, cj = _clients(cfg)
-    a = Executor(store, cfg, shopify, cj).execute(approval_id)
+    shopify, cj, amazon_client = _clients(cfg)
+    a = Executor(store, cfg, shopify, cj, amazon=amazon_client).execute(approval_id)
     if a.status == "executed":
         console.print(f"[green]#{approval_id} executed[/green]: {a.result}")
     else:
@@ -344,8 +386,8 @@ def approvals_retry(approval_id: int) -> None:
         raise typer.Exit(code=_fail(f"approval #{approval_id} is {a.status}, not failed"))
     store.decide_approval(approval_id, "approved")
     from .executor import Executor
-    shopify, cj = _clients(cfg)
-    a = Executor(store, cfg, shopify, cj).execute(approval_id)
+    shopify, cj, amazon_client = _clients(cfg)
+    a = Executor(store, cfg, shopify, cj, amazon=amazon_client).execute(approval_id)
     if a.status == "executed":
         console.print(f"[green]#{approval_id} executed[/green]: {a.result}")
     else:
@@ -356,22 +398,31 @@ def approvals_retry(approval_id: int) -> None:
 
 @orders_app.command("sync")
 def orders_sync() -> None:
-    """Pull unfulfilled Shopify orders into the local pipeline (no AI, no approval)."""
+    """Pull unfulfilled Shopify + Amazon orders into the local pipeline (no AI)."""
     cfg = _cfg()
     _mode_banner(cfg)
     store = _store(cfg)
-    shopify, _ = _clients(cfg)
-    count = 0
-    for order in shopify.list_open_orders():
-        store.upsert_order(
-            order["id"],
-            order_number=order.get("name", ""),
-            customer_email=order.get("email", ""),
-            line_items_json=json.dumps(order.get("lineItems", [])),
-            shipping_address_json=json.dumps(order.get("shippingAddress") or {}),
-        )
-        count += 1
-    console.print(f"synced {count} open order(s)")
+    shopify, _, amazon_client = _clients(cfg)
+
+    def _sync(orders: list[dict], channel: str) -> int:
+        for order in orders:
+            store.upsert_order(
+                order["id"],
+                channel=channel,
+                order_number=order.get("name", ""),
+                customer_email=order.get("email", ""),
+                line_items_json=json.dumps(order.get("lineItems", [])),
+                shipping_address_json=json.dumps(order.get("shippingAddress") or {}),
+            )
+        return len(orders)
+
+    shopify_count = _sync(shopify.list_open_orders(), "shopify")
+    try:
+        amazon_count = _sync(amazon_client.list_unshipped_orders(), "amazon")
+        console.print(f"synced {shopify_count} shopify + {amazon_count} amazon order(s)")
+    except Exception as exc:
+        console.print(f"synced {shopify_count} shopify order(s); "
+                      f"[red]amazon sync failed: {exc}[/red]")
 
 
 @orders_app.command("list")
@@ -384,11 +435,12 @@ def orders_list(status: Optional[str] = typer.Option(None, "--status")) -> None:
         console.print("no orders" + (f" with status {status}" if status else ""))
         return
     table = Table(title="Orders")
-    for col in ("id", "number", "status", "customer", "cj order", "tracking"):
+    for col in ("id", "channel", "number", "status", "customer", "cj order", "tracking"):
         table.add_column(col)
     for o in orders:
-        table.add_row(str(o["id"]), o["order_number"], o["status"],
-                      o["customer_email"], o["cj_order_id"], o["tracking_number"])
+        table.add_row(str(o["id"]), o.get("channel", "shopify"), o["order_number"],
+                      o["status"], o["customer_email"], o["cj_order_id"],
+                      o["tracking_number"])
     console.print(table)
 
 
@@ -402,13 +454,16 @@ def products_list(status: Optional[str] = typer.Option(None, "--status")) -> Non
         console.print("no products" + (f" with status {status}" if status else ""))
         return
     table = Table(title="Products")
-    for col in ("id", "name", "status", "niche", "cost", "price", "shopify id"):
+    for col in ("id", "name", "status", "niche", "cost", "price", "shopify id", "amazon"):
         table.add_column(col)
     for p in products:
+        amazon_col = p.get("amazon_status") or ""
+        if p.get("amazon_sku"):
+            amazon_col = f"{amazon_col} ({p['amazon_sku']})".strip()
         table.add_row(str(p["id"]), p["name"][:40], p["status"], p["niche"],
                       f"{p['supplier_price']:.2f}" if p["supplier_price"] else "",
                       f"{p['proposed_price']:.2f}" if p["proposed_price"] else "",
-                      p["shopify_product_id"])
+                      p["shopify_product_id"], amazon_col)
     console.print(table)
 
 

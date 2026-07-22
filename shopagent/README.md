@@ -144,6 +144,67 @@ gitignored `.shopify_token.json`, refreshed on expiry).
 > developers.cjdropshipping.com — CJ occasionally revises payload fields —
 > and test with one small order.
 
+## Adding the Amazon channel
+
+shopagent can cross-list the same pipeline products onto Amazon (merchant
+fulfilled / FBM, shipped by CJ) and manage those orders through the same
+approval queue. In dry-run it works against a mock Amazon backend.
+
+### Prerequisites (one-time, in Seller Central)
+
+1. **Professional selling plan** ($39.99/mo) — required for API access — and
+   completed seller identity verification.
+2. **Register as a developer & create a private app**: Seller Central →
+   **Partner Network → Develop Apps**. In the developer profile, request the
+   roles your app needs — crucially the **Direct-to-Consumer Shipping
+   (restricted) role**: without it, buyer shipping addresses are redacted and
+   dropshipping is impossible. Amazon reviews this request; it can take days,
+   so do it first.
+3. Create the app, then click **Authorize** and copy the **refresh token**
+   shown (long `Atzr|...` string). Collect the **LWA Client ID / Client
+   Secret** from the app's credentials view.
+4. Your **Seller ID** (a.k.a. Merchant Token): Settings → Account Info →
+   Merchant Token.
+5. Put all four in `.env` (`AMZ_CLIENT_ID`, `AMZ_CLIENT_SECRET`,
+   `AMZ_REFRESH_TOKEN`, `AMZ_SELLER_ID`). Token exchange and refresh are
+   automatic (cached in gitignored `.amazon_token.json`).
+6. **GTIN/UPC exemption**: generic dropshipped products have no UPC barcodes.
+   Apply for a GTIN exemption for brand "Generic" (Seller Central → Apply for
+   GTIN exemption) *before* approving Amazon listings — creation fails
+   without it. Often auto-approved.
+
+### Amazon dropshipping policy — read this
+
+Amazon allows dropshipping ONLY if:
+- **You are the seller of record.** All packing slips, invoices, and external
+  packaging must identify **your store** and nobody else — no CJ branding, no
+  promotional inserts. Configure this in CJ (Settings → dropshipping/no
+  invoice) before your first Amazon order.
+- You are responsible for accepting and processing returns.
+- Set honest handling time (`amazon.lead_time_days`, default 5) — CJ takes
+  1–3 days to process — and realistic transit expectations in your Seller
+  Central shipping templates (CJ delivery is typically 8–15 days).
+
+Violations risk account suspension. Amazon also tracks valid-tracking-rate:
+`carrier_default: Other` + carrier name works but scores worse than a real
+carrier code — when CJ hands off to USPS/UPS last-mile, prefer that code.
+
+### How it works day-to-day
+
+- `shopagent amazon draft` — the Amazon agent cross-lists eligible store
+  products (Amazon-optimized title/bullets, price from the pipeline,
+  photos from CJ, SKU = the CJ variant id) and files `amazon.create_listing`
+  approvals. It pre-validates every payload with Amazon's validation mode and
+  fixes issues before proposing.
+- `shopagent orders sync` / `run daily` — pulls unshipped Amazon orders next
+  to Shopify ones (`channel` column); the fulfillment agent proposes CJ
+  orders for them, and once CJ ships, proposes `amazon.confirm_shipment`,
+  which uploads the tracking number to Amazon on approval.
+- Listing creation on Amazon is **asynchronous**: an accepted submission can
+  still surface issues minutes later. The agent re-checks on later runs and
+  marks blocked listings with notes.
+- The Orders API is rate-limited to ~1 call/minute — sync once, don't hammer.
+
 ## Configuration reference (`config.yaml`)
 
 | Key | Meaning |

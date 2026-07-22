@@ -31,13 +31,39 @@ def test_invalid_mode_rejected(tmp_path):
 
 def test_live_mode_without_credentials_degrades_to_mock(tmp_path, monkeypatch):
     for var in ("SHOPIFY_STORE_DOMAIN", "SHOPIFY_ACCESS_TOKEN", "SHOPIFY_CLIENT_ID",
-                "SHOPIFY_CLIENT_SECRET", "CJ_EMAIL", "CJ_API_KEY"):
+                "SHOPIFY_CLIENT_SECRET", "CJ_EMAIL", "CJ_API_KEY",
+                "AMZ_CLIENT_ID", "AMZ_CLIENT_SECRET", "AMZ_REFRESH_TOKEN",
+                "AMZ_SELLER_ID"):
         monkeypatch.delenv(var, raising=False)
     (tmp_path / "config.yaml").write_text("mode: live\n")
     cfg = load_config(tmp_path)
     assert cfg.shopify_mode() == "mock"
     assert cfg.shopify_auth_method() == "none"
     assert cfg.cj_mode() == "mock"
+    assert cfg.amazon_mode() == "mock"
+
+
+def test_amazon_mode_requires_all_four_credentials(tmp_path, monkeypatch):
+    (tmp_path / "config.yaml").write_text("mode: live\n")
+    for var in ("AMZ_CLIENT_ID", "AMZ_CLIENT_SECRET", "AMZ_REFRESH_TOKEN",
+                "AMZ_SELLER_ID"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("AMZ_CLIENT_ID", "cid")
+    monkeypatch.setenv("AMZ_CLIENT_SECRET", "csec")
+    monkeypatch.setenv("AMZ_REFRESH_TOKEN", "rtok")
+    # AMZ_SELLER_ID still missing -> mock
+    assert load_config(tmp_path).amazon_mode() == "mock"
+    monkeypatch.setenv("AMZ_SELLER_ID", "SELLER1")
+    assert load_config(tmp_path).amazon_mode() == "live"
+
+
+def test_amazon_mode_mock_in_dry_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("AMZ_CLIENT_ID", "cid")
+    monkeypatch.setenv("AMZ_CLIENT_SECRET", "csec")
+    monkeypatch.setenv("AMZ_REFRESH_TOKEN", "rtok")
+    monkeypatch.setenv("AMZ_SELLER_ID", "SELLER1")
+    cfg = load_config(tmp_path)  # default mode is dry_run
+    assert cfg.amazon_mode() == "mock"
 
 
 def test_live_mode_with_client_credentials(tmp_path, monkeypatch):

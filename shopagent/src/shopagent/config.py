@@ -22,6 +22,15 @@ class SupplierConfig(BaseModel):
     ship_to_country: str = "US"
 
 
+class AmazonConfig(BaseModel):
+    marketplace_id: str = "ATVPDKIKX0DER"  # amazon.com (US)
+    endpoint: str = "https://sellingpartnerapi-na.amazon.com"
+    carrier_default: str = "Other"
+    carrier_name_default: str = "CJPacket"
+    lead_time_days: int = 5
+    default_quantity: int = 20  # FBM stock buffer shown to Amazon
+
+
 class PricingConfig(BaseModel):
     markup_multiplier: float = 2.5
     min_margin_usd: float = 3.0
@@ -50,6 +59,7 @@ class AppConfig(BaseModel):
     mode: str = "dry_run"
     store: StoreConfig = Field(default_factory=StoreConfig)
     supplier: SupplierConfig = Field(default_factory=SupplierConfig)
+    amazon: AmazonConfig = Field(default_factory=AmazonConfig)
     business: BusinessConfig = Field(default_factory=BusinessConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
@@ -97,6 +107,16 @@ class AppConfig(BaseModel):
         if self.mode != "live":
             return "mock"
         if os.environ.get("CJ_EMAIL") and os.environ.get("CJ_API_KEY"):
+            return "live"
+        return "mock"
+
+    def amazon_mode(self) -> str:
+        """Effective mode for the Amazon SP-API integration: 'live' or 'mock'."""
+        if self.mode != "live":
+            return "mock"
+        required = ("AMZ_CLIENT_ID", "AMZ_CLIENT_SECRET", "AMZ_REFRESH_TOKEN",
+                    "AMZ_SELLER_ID")
+        if all(os.environ.get(v) for v in required):
             return "live"
         return "mock"
 

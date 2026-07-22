@@ -7,8 +7,8 @@ from shopagent.store import Approval
 
 
 @pytest.fixture
-def executor(store, cfg, shopify, cj) -> Executor:
-    return Executor(store, cfg, shopify, cj)
+def executor(store, cfg, shopify, cj, amazon) -> Executor:
+    return Executor(store, cfg, shopify, cj, amazon=amazon)
 
 
 def test_only_approved_actions_execute(store, executor):
@@ -101,6 +101,65 @@ def test_cj_order_writes_back_and_failure_is_retryable(store, executor, cj):
     order = store.get_order(order_id)
     assert order["status"] == "cj_placed"
     assert order["cj_order_id"].startswith("MOCKCJ")
+
+
+def test_amazon_create_listing_writes_back(store, executor, amazon):
+    product_id = store.upsert_product("CJ-PET-002", "LED Collar",
+                                      cj_vid="V-PET-002-A", proposed_price=16.99)
+    approval_id = store.propose(Approval(
+        action_type="amazon.create_listing", agent="amazon",
+        title="Amazon: LED Collar",
+        payload={"sku": "V-PET-002-A", "product_type": "PET_SUPPLIES",
+                 "attributes": {"item_name": [{"value": "LED Collar"}],
+                                "brand": [{"value": "Generic"}]}},
+        ref_table="products", ref_id=product_id))
+    store.decide_approval(approval_id, "approved")
+    a = executor.execute(approval_id)
+    assert a.status == "executed", a.error
+    product = store.get_product(product_id)
+    assert product["amazon_sku"] == "V-PET-002-A"
+    assert product["amazon_status"] == "submitted"
+    assert product["amazon_submission_id"].startswith("MOCKSUB")
+    assert amazon.get_listing("V-PET-002-A") is not None
+
+
+def test_amazon_confirm_shipment_writes_back(store, executor, amazon):
+    order_id = store.upsert_order("111-2233445-6677889", channel="amazon",
+                                  order_number="111-2233445-6677889")
+    store.update_order(order_id, status="cj_placed", cj_order_id="MOCKCJ000009")
+    approval_id = store.propose(Approval(
+        action_type="amazon.confirm_shipment", agent="fulfillment",
+        title="Confirm shipment for 111-2233445-6677889",
+        payload={"amazon_order_id": "111-2233445-6677889",
+                 "tracking_number": "CJMOCK000009", "carrier_code": "Other",
+                 "order_items": [{"order_item_id": "OI-0001", "quantity": 1}]},
+        ref_table="orders", ref_id=order_id))
+    store.decide_approval(approval_id, "approved")
+    a = executor.execute(approval_id)
+    assert a.status == "executed", a.error
+    order = store.get_order(order_id)
+    assert order["status"] == "shipped"
+    assert order["tracking_number"] == "CJMOCK000009"
+    assert len(amazon.list_unshipped_orders()) == 1  # one of two seeds shipped
+
+    # confirming again fails cleanly
+    again = store.propose(Approval(
+        action_type="amazon.confirm_shipment", agent="fulfillment", title="dup",
+        payload={"amazon_order_id": "111-2233445-6677889",
+                 "tracking_number": "CJMOCK000009", "carrier_code": "Other",
+                 "order_items": []}))
+    store.decide_approval(again, "approved")
+    assert executor.execute(again).status == "failed"
+
+
+def test_amazon_update_price(store, executor, amazon):
+    amazon.put_listing("V-PET-002-A", "PET_SUPPLIES", {})
+    approval_id = store.propose(Approval(
+        action_type="amazon.update_price", agent="amazon", title="Reprice",
+        payload={"sku": "V-PET-002-A", "product_type": "PET_SUPPLIES",
+                 "price": 18.99}))
+    store.decide_approval(approval_id, "approved")
+    assert executor.execute(approval_id).status == "executed"
 
 
 def test_support_reply_writes_file(store, executor, cfg):

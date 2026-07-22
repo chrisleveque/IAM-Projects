@@ -121,10 +121,65 @@ def test_daily_pipeline_emits_progress_events(store, cfg, shopify, cj):
         ("start", "support"), ("done", "support"),
         ("skip", "research"),
         ("skip", "listings"),
+        ("skip", "amazon"),
         ("skip", "marketing"),
     ]
     done_fulfillment = events[1][1]
     assert done_fulfillment["ok"] and done_fulfillment["summary"] == "orders handled"
+
+
+def test_amazon_step_runs_for_uncrosslisted_listed_products(store, cfg, shopify, cj,
+                                                              amazon):
+    # pool full so research is skipped; nothing shortlisted so listings is
+    # skipped; but one product is already 'listed' on Shopify with no
+    # amazon_status yet, so the amazon step must run and propose a listing.
+    for i in range(3):
+        store.upsert_product(f"CJ-{i}", f"Thing {i}", niche="pet accessories")
+    product_id = store.upsert_product("CJ-PET-002",
+                                      "LED Safety Dog Collar, USB Rechargeable",
+                                      cj_vid="V-PET-002-A", proposed_price=16.99)
+    store.update_product(product_id, status="listed")
+    attributes = {"item_name": [{"value": "LED Safety Dog Collar"}],
+                  "brand": [{"value": "Generic"}]}
+
+    amazon_script = FakeAIClient(script=[
+        ("propose_action", {"action_type": "amazon.create_listing",
+                            "title": "Amazon: LED Safety Dog Collar",
+                            "payload": {"sku": "V-PET-002-A",
+                                        "product_type": "PET_SUPPLIES",
+                                        "attributes": attributes},
+                            "rationale": "cross-list a Shopify winner",
+                            "ref_table": "products", "ref_id": product_id}),
+    ], final_text="1 Amazon listing proposed")
+
+    ai = ScriptedPerAgentAI([FakeAIClient(final_text="orders handled"),
+                             FakeAIClient(final_text="inbox handled"),
+                             amazon_script])
+    orch = Orchestrator(ai, store, cfg, shopify, cj, amazon=amazon)
+    summary = orch.run_daily()
+
+    steps = {s["agent"]: s for s in summary["steps"]}
+    assert steps["research"].get("skipped")
+    assert steps["listings"].get("skipped")
+    assert steps["amazon"]["ok"]
+    assert summary["pending_approvals"] == 1
+
+    approval = store.list_approvals("pending")[0]
+    assert approval.action_type == "amazon.create_listing"
+    store.decide_approval(approval.id, "approved")
+    executed = Executor(store, cfg, shopify, cj, amazon=amazon).execute(approval.id)
+    assert executed.status == "executed", executed.error
+    assert store.get_product(product_id)["amazon_status"] == "submitted"
+
+
+def test_amazon_step_skipped_once_already_cross_listed(store, cfg, shopify, cj, amazon):
+    product_id = store.upsert_product("CJ-PET-002", "LED Collar",
+                                      cj_vid="V-PET-002-A")
+    store.update_product(product_id, status="listed", amazon_status="submitted")
+    ai = ScriptedPerAgentAI([FakeAIClient(), FakeAIClient()])
+    summary = Orchestrator(ai, store, cfg, shopify, cj, amazon=amazon).run_daily()
+    steps = {s["agent"]: s for s in summary["steps"]}
+    assert steps["amazon"].get("skipped")
 
 
 def test_research_skipped_when_pool_full(store, cfg, shopify, cj):

@@ -7,6 +7,7 @@ tool-use loop; a failure in one step is recorded and the pipeline continues.
 
 from __future__ import annotations
 
+from .agents.amazon import AmazonListingAgent
 from .agents.fulfillment import FulfillmentAgent
 from .agents.listings import ListingsAgent
 from .agents.marketing import MarketingAgent
@@ -21,20 +22,23 @@ AGENTS = {
     "fulfillment": FulfillmentAgent,
     "support": SupportAgent,
     "marketing": MarketingAgent,
+    "amazon": AmazonListingAgent,
 }
 
 
 class Orchestrator:
-    def __init__(self, ai, store: Store, cfg: AppConfig, shopify, cj):
+    def __init__(self, ai, store: Store, cfg: AppConfig, shopify, cj, amazon=None):
         self.ai = ai
         self.store = store
         self.cfg = cfg
         self.shopify = shopify
         self.cj = cj
+        self.amazon = amazon
 
     def agent(self, name: str):
         cls = AGENTS[name]
-        return cls(self.ai, self.store, self.cfg, shopify=self.shopify, cj=self.cj)
+        return cls(self.ai, self.store, self.cfg, shopify=self.shopify, cj=self.cj,
+                   amazon=self.amazon)
 
     def run_task(self, agent_name: str, task: str):
         return self.agent(agent_name).run(task)
@@ -77,8 +81,9 @@ class Orchestrator:
             notify("done", entry)
 
         step("fulfillment",
-             "Run your standard workflow: sync store orders, propose CJ orders for "
-             "new ones, and update tracking for placed ones.")
+             "Run your standard workflow: sync Shopify and Amazon orders, propose "
+             "CJ orders for new ones, and update tracking for placed ones "
+             "(channel-matched shipment confirmations).")
 
         step("support", "Handle every message currently in the inbox.")
 
@@ -100,6 +105,16 @@ class Orchestrator:
                  "each for the store.")
         else:
             step("listings", "", skip_reason="nothing shortlisted")
+
+        cross_list = [p for p in self.store.list_products("listed")
+                      if not p.get("amazon_status")]
+        if cross_list:
+            ids = ", ".join(str(p["id"]) for p in cross_list)
+            step("amazon",
+                 f"Cross-list product ids {ids} onto Amazon: validate each listing "
+                 "before proposing it.")
+        else:
+            step("amazon", "", skip_reason="nothing new to cross-list")
 
         listed = self.store.list_products("listed")
         if listed:

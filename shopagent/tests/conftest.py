@@ -9,6 +9,7 @@ import pytest
 
 from shopagent.ai.client import ToolRunResult
 from shopagent.config import AppConfig
+from shopagent.integrations.amazon_client import MockAmazonClient
 from shopagent.integrations.cj_client import MockCJClient
 from shopagent.integrations.shopify_client import MockShopifyClient
 from shopagent.store import Store
@@ -73,3 +74,8 @@ def shopify() -> MockShopifyClient:
 @pytest.fixture
 def cj() -> MockCJClient:
     return MockCJClient()
+
+
+@pytest.fixture
+def amazon() -> MockAmazonClient:
+    return MockAmazonClient()

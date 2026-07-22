@@ -97,6 +97,41 @@ SHOPIFY_SEED_ORDERS: list[dict] = [
     },
 ]
 
+# -------------------------------------------------------------- mock Amazon
+
+AMAZON_PRODUCT_TYPES = ["PET_SUPPLIES", "PRODUCT"]
+
+AMAZON_SEED_ORDERS: list[dict] = [
+    {
+        "id": "111-2233445-6677889",
+        "name": "111-2233445-6677889",
+        "email": "riley.okafor@example.com",
+        "lineItems": [
+            {"title": "LED Safety Dog Collar, USB Rechargeable", "quantity": 1,
+             "sku": "V-PET-002-A", "price": "16.99", "order_item_id": "OI-0001"},
+        ],
+        "shippingAddress": {
+            "name": "Riley Okafor", "address1": "902 Cedar Ln", "address2": "",
+            "city": "Denver", "provinceCode": "CO", "zip": "80202",
+            "countryCodeV2": "US", "phone": "+1 720 555 0163",
+        },
+    },
+    {
+        "id": "112-9988776-5544332",
+        "name": "112-9988776-5544332",
+        "email": "casey.nguyen@example.com",
+        "lineItems": [
+            {"title": "Adjustable Resistance Bands Set (5 Levels)", "quantity": 1,
+             "sku": "V-FIT-001-A", "price": "18.99", "order_item_id": "OI-0002"},
+        ],
+        "shippingAddress": {
+            "name": "Casey Nguyen", "address1": "15 Willow Ct", "address2": "Apt 2",
+            "city": "Raleigh", "provinceCode": "NC", "zip": "27601",
+            "countryCodeV2": "US", "phone": "+1 919 555 0128",
+        },
+    },
+]
+
 # ----------------------------------------------------------------- mock inbox
 
 INBOX_MESSAGES: dict[str, str] = {
