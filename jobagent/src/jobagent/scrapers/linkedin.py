@@ -20,8 +20,14 @@ SELECTORS = {
     "card": "li[data-occludable-job-id], ul.jobs-search__results-list > li",
     "card_link": "a.job-card-list__title--link, a.job-card-list__title, "
                  "a.job-card-container__link, a.base-card__full-link",
+    # No bare h1 here: on the search page the h1 is the results heading
+    # ("3,000+ ... Jobs in ..."), not the job title. The card link text is the
+    # fallback instead (see scan()).
     "detail_title": ".job-details-jobs-unified-top-card__job-title, "
-                    ".jobs-unified-top-card__job-title, h1",
+                    ".jobs-unified-top-card__job-title",
+    # Dedicated /jobs/view/ pages (saved-jobs import) do use h1 for the title.
+    "view_title": ".job-details-jobs-unified-top-card__job-title, "
+                  ".jobs-unified-top-card__job-title, h1.top-card-layout__title, h1",
     "detail_company": ".job-details-jobs-unified-top-card__company-name, "
                       ".jobs-unified-top-card__company-name, .topcard__org-name-link",
     "detail_location": ".job-details-jobs-unified-top-card__primary-description-container, "
@@ -54,9 +60,9 @@ def _text(page_or_scope, selector: str) -> str:
         return ""
 
 
-def _read_detail_pane(page) -> dict:
+def _read_detail_pane(page, title_selector: str = "detail_title") -> dict:
     return {
-        "title": _text(page, SELECTORS["detail_title"]),
+        "title": _text(page, SELECTORS[title_selector]),
         "company": _text(page, SELECTORS["detail_company"]),
         "location": _text(page, SELECTORS["detail_location"]),
         "description": _text(page, SELECTORS["description"]),
@@ -107,9 +113,15 @@ def scan(session: BrowserSession, store: Store, spec: SearchSpec, console: Conso
             if "/jobs/view/" not in href:
                 continue
             job_url = canonical_job_url(href)
+            try:
+                card_title = " ".join(link.inner_text(timeout=3000).split())
+            except Exception:
+                card_title = ""
             card.click()
             session.pause()
             detail = _read_detail_pane(page)
+            if not detail["title"]:
+                detail["title"] = card_title
             job = Job(url=job_url, source="linkedin", **detail)
             if store.upsert_job(job):
                 new_count += 1
@@ -141,7 +153,7 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
             page.goto(job_url)
             page.wait_for_load_state("domcontentloaded")
             session.pause()
-            detail = _read_detail_pane(page)
+            detail = _read_detail_pane(page, title_selector="view_title")
             if store.upsert_job(Job(url=job_url, source="linkedin", **detail)):
                 new_count += 1
                 console.print(f"  [green]+[/green] {detail['title'] or job_url}")

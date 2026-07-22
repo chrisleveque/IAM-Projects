@@ -33,7 +33,7 @@ def _master_resume(cfg: AppConfig) -> str:
     path = cfg.master_resume_path
     if not path.exists():
         raise typer.Exit(code=_fail(f"master resume not found at {path}"))
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     if "REPLACE ME" in text:
         raise typer.Exit(code=_fail(
             f"{path} still contains the template marker — paste your real resume "
@@ -45,7 +45,7 @@ def _answers(cfg: AppConfig) -> dict:
     path = cfg.answers_path
     if not path.exists():
         return {}
-    return yaml.safe_load(path.read_text()) or {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def _ai(cfg: AppConfig):
@@ -69,8 +69,21 @@ def login():
         console.print("Log in to [bold]LinkedIn[/bold] in the browser window "
                       "(2FA/captcha included).")
         Prompt.ask("Press Enter here when LinkedIn is logged in", default="")
-        page.goto("https://secure.indeed.com/auth")
-        console.print("Now log in to [bold]Indeed[/bold].")
+        # Open Indeed in a fresh tab: right after login the LinkedIn tab is often
+        # still mid-redirect, and a goto() on it dies with "interrupted by
+        # another navigation".
+        indeed_page = session.new_page()
+        for attempt in range(3):
+            try:
+                indeed_page.goto("https://secure.indeed.com/auth",
+                                 wait_until="domcontentloaded")
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                indeed_page.wait_for_timeout(2000)
+        console.print("Now log in to [bold]Indeed[/bold] (tip: enter your email "
+                      "and choose the sign-in code option — no password needed).")
         Prompt.ask("Press Enter here when Indeed is logged in", default="")
     console.print("[green]Sessions saved to the local browser profile. "
                   "You won't need to log in again unless they expire.[/green]")
@@ -316,11 +329,11 @@ def doctor():
     check("config.yaml", (cfg.root / "config.yaml").exists())
     check("searches configured", bool(cfg.searches))
     resume_path = cfg.master_resume_path
-    resume_ready = resume_path.exists() and "REPLACE ME" not in resume_path.read_text()
+    resume_ready = resume_path.exists() and "REPLACE ME" not in resume_path.read_text(encoding="utf-8")
     check("master resume filled in", resume_ready,
           f"— edit {resume_path} (remove the REPLACE ME comment)")
     answers_path = cfg.answers_path
-    answers_ready = answers_path.exists() and "REPLACE ME" not in answers_path.read_text()
+    answers_ready = answers_path.exists() and "REPLACE ME" not in answers_path.read_text(encoding="utf-8")
     check("answers.yaml filled in", answers_ready,
           f"— edit {answers_path} (remove the REPLACE ME line)")
     import os

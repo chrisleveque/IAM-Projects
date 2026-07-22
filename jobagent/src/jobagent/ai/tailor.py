@@ -73,5 +73,4 @@ def tailor_for_job(ai, master_resume: str, job: Job) -> TailoredPackage:
         f"{job.description}\n\n"
         "Tailor the resume and write the cover letter for this posting."
     )
-    data = ai.complete_json(SYSTEM, user)
-    return TailoredPackage.model_validate(data)
+    return ai.parse(SYSTEM, user, TailoredPackage)
