@@ -20,6 +20,8 @@ HARD RULES — violating these harms the candidate:
    and emphasize; you may NOT invent employers, job titles, dates, locations,
    degrees, certifications, tools, metrics, or skills that are not in it.
 2. Keep every employer name, job title, and date range exactly as written.
+   Copy the candidate's name and contact line from the master resume EXACTLY,
+   preserving every URL (LinkedIn, GitHub, TryHackMe, etc.) character-for-character.
 3. Prefer the master resume's own numbers/metrics; never fabricate new ones.
 4. Mirror the job posting's terminology only where the master resume genuinely
    supports it (e.g. rename a skills grouping, lead with the most relevant bullets).
@@ -66,11 +68,17 @@ class TailoredPackage(BaseModel):
     cover_letter: str = ""
 
 
-def tailor_for_job(ai, master_resume: str, job: Job) -> TailoredPackage:
+def tailor_for_job(ai, master_resume: str, job: Job,
+                   extra_instructions: str = "") -> TailoredPackage:
     user = (
         f"MASTER RESUME:\n{master_resume}\n\n"
         f"JOB POSTING ({job.title} at {job.company}, {job.location}):\n"
         f"{job.description}\n\n"
         "Tailor the resume and write the cover letter for this posting."
     )
+    if extra_instructions.strip():
+        user += (
+            "\n\nSTYLE INSTRUCTIONS FROM THE CANDIDATE (follow these for tone "
+            f"and wording):\n{extra_instructions.strip()}"
+        )
     return ai.parse(SYSTEM, user, TailoredPackage)

@@ -28,6 +28,15 @@ ai:
   model: claude-sonnet-5
   max_tokens: 8192
 
+# Style guidance for the AI when writing your tailored resume and cover
+# letter. Put anything here you'd tell a human resume writer, for example:
+#   instructions: >
+#     Write the professional summary in first person, two sentences max.
+#     No buzzwords like "results-driven", "dynamic", or "passionate".
+#     Plain, confident language.
+tailoring:
+  instructions: ""
+
 paths:
   output_dir: output               # tailored resumes/cover letters land here
   db_path: jobagent.db             # SQLite job tracker
