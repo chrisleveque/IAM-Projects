@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     location TEXT DEFAULT '',
     description TEXT DEFAULT '',
     easy_apply INTEGER DEFAULT 0,
+    saved INTEGER DEFAULT 0,
     status TEXT DEFAULT 'discovered',
     score INTEGER,
     score_reasons TEXT DEFAULT '',
@@ -49,6 +50,7 @@ class Job:
     location: str = ""
     description: str = ""
     easy_apply: bool = False
+    saved: bool = False  # imported from the user's saved-jobs list
     status: str = "discovered"
     score: int | None = None
     score_reasons: str = ""
@@ -62,6 +64,7 @@ class Job:
     def from_row(cls, row: sqlite3.Row) -> "Job":
         d = dict(row)
         d["easy_apply"] = bool(d.get("easy_apply"))
+        d["saved"] = bool(d.get("saved"))
         return cls(**d)
 
 
@@ -70,6 +73,10 @@ class Store:
         self.conn = sqlite3.connect(str(db_path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        # Migrate databases created before the `saved` column existed.
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(jobs)")}
+        if "saved" not in cols:
+            self.conn.execute("ALTER TABLE jobs ADD COLUMN saved INTEGER DEFAULT 0")
         self.conn.commit()
 
     def close(self) -> None:
@@ -82,10 +89,11 @@ class Store:
         if existing is None:
             self.conn.execute(
                 """INSERT INTO jobs (url, source, title, company, location, description,
-                       easy_apply, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       easy_apply, saved, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (job.url, job.source, job.title, job.company, job.location,
-                 job.description, int(job.easy_apply), job.status, _now(), _now()),
+                 job.description, int(job.easy_apply), int(job.saved), job.status,
+                 _now(), _now()),
             )
             self.conn.commit()
             return True
@@ -96,10 +104,12 @@ class Store:
                    location = CASE WHEN ? != '' THEN ? ELSE location END,
                    description = CASE WHEN length(?) > length(description) THEN ? ELSE description END,
                    easy_apply = MAX(easy_apply, ?),
+                   saved = MAX(saved, ?),
                    updated_at = ?
                WHERE url = ?""",
             (job.title, job.title, job.company, job.company, job.location, job.location,
-             job.description, job.description, int(job.easy_apply), _now(), job.url),
+             job.description, job.description, int(job.easy_apply), int(job.saved),
+             _now(), job.url),
         )
         self.conn.commit()
         return False
@@ -113,8 +123,12 @@ class Store:
         status: str | tuple[str, ...] | None = None,
         source: str | None = None,
         min_score: int | None = None,
+        saved: bool | None = None,
     ) -> list[Job]:
         clauses, params = [], []
+        if saved is not None:
+            clauses.append("saved = ?")
+            params.append(int(saved))
         if status is not None:
             statuses = (status,) if isinstance(status, str) else tuple(status)
             clauses.append(f"status IN ({','.join('?' * len(statuses))})")

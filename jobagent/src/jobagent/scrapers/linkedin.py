@@ -154,7 +154,7 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
             page.wait_for_load_state("domcontentloaded")
             session.pause()
             detail = _read_detail_pane(page, title_selector="view_title")
-            if store.upsert_job(Job(url=job_url, source="linkedin", **detail)):
+            if store.upsert_job(Job(url=job_url, source="linkedin", saved=True, **detail)):
                 new_count += 1
                 console.print(f"  [green]+[/green] {detail['title'] or job_url}")
         except Exception as exc:
