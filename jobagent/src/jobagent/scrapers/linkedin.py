@@ -77,6 +77,22 @@ def _stuck_on_login(page_url: str) -> bool:
     return any(marker in page_url for marker in LOGIN_MARKERS)
 
 
+def _goto(session: BrowserSession, page, url: str, attempts: int = 4) -> None:
+    """Navigate with retries. Right after sign-in (especially 2FA) LinkedIn is
+    still mid-redirect, and a goto() at that moment dies with 'interrupted by
+    another navigation' — wait out the redirect chain and try again."""
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            page.goto(url, wait_until="domcontentloaded")
+            session.pause()
+            return
+        except Exception as exc:
+            last_error = exc
+            page.wait_for_timeout(2500 * (attempt + 1))
+    raise last_error
+
+
 def _login_and_retry(session: BrowserSession, page, url: str,
                      console: Console) -> bool:
     """LinkedIn bounced us to a sign-in wall. Keep the window open, let the
@@ -86,9 +102,7 @@ def _login_and_retry(session: BrowserSession, page, url: str,
                   "window stays open — sign in there now (your session will be "
                   "remembered).[/yellow]")
     Prompt.ask("Press Enter here once you're signed in", default="")
-    page.goto(url)
-    page.wait_for_load_state("domcontentloaded")
-    session.pause()
+    _goto(session, page, url)
     if _stuck_on_login(page.url):
         console.print("[red]Still on the sign-in page — finish signing in in the "
                       "browser, then rerun the scan.[/red]")
@@ -114,9 +128,7 @@ def scan(session: BrowserSession, store: Store, spec: SearchSpec, console: Conso
         url += "&f_AL=true"
 
     console.print(f"[bold]LinkedIn:[/bold] searching '{spec.query}' ({spec.location or 'any'})")
-    page.goto(url)
-    page.wait_for_load_state("domcontentloaded")
-    session.pause()
+    _goto(session, page, url)
 
     if _stuck_on_login(page.url) and not _login_and_retry(session, page, url, console):
         return 0
@@ -161,9 +173,7 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
     """Import jobs you saved on LinkedIn while browsing."""
     page = session.page
     console.print("[bold]LinkedIn:[/bold] importing saved jobs")
-    page.goto(SAVED_JOBS_URL)
-    page.wait_for_load_state("domcontentloaded")
-    session.pause()
+    _goto(session, page, SAVED_JOBS_URL)
 
     if _stuck_on_login(page.url) and not _login_and_retry(
             session, page, SAVED_JOBS_URL, console):
@@ -184,9 +194,7 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
     new_count = 0
     for job_url in hrefs[:limit]:
         try:
-            page.goto(job_url)
-            page.wait_for_load_state("domcontentloaded")
-            session.pause()
+            _goto(session, page, job_url)
             detail = _read_detail_pane(page, title_selector="view_title")
             if store.upsert_job(Job(url=job_url, source="linkedin", saved=True, **detail)):
                 new_count += 1
