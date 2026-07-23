@@ -100,6 +100,22 @@ certifications, metrics, or skills. It only reorders, selects, and rewords what
 is in `profile/master_resume.md`. Still — proofread `output/` before applying;
 you are the last reviewer.
 
+## When LinkedIn won't let you sign in
+
+If LinkedIn's sign-in page loops or the URL shows
+`errorKey=challenge_global_internal_error`, LinkedIn's security challenge is
+refusing the automated browser — retyping your password won't help. Import
+your session from your normal browser instead:
+
+```bash
+jobagent login --linkedin-cookie
+```
+
+It walks you through copying the `li_at` cookie from your regular Chrome
+(F12 → Application → Cookies → linkedin.com). That value IS your logged-in
+session — treat it like a password. It's stored only in the local
+`browser_profile/` folder and typically stays valid for months.
+
 ## When scraping breaks
 
 LinkedIn and Indeed change their page markup regularly. All selectors live in

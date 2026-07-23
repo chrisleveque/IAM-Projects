@@ -59,10 +59,52 @@ def _fail(msg: str) -> int:
 
 
 @app.command()
-def login():
+def login(
+    linkedin_cookie: bool = typer.Option(
+        False, "--linkedin-cookie",
+        help="Import your LinkedIn session cookie from your normal browser "
+             "instead of signing in. Use this when LinkedIn's sign-in page "
+             "loops or shows challenge errors."),
+):
     """Open a browser to log in to LinkedIn and Indeed (cookies persist locally)."""
     from .browser import BrowserSession
     cfg = _cfg()
+
+    if linkedin_cookie:
+        console.print(Panel(
+            "Grab your LinkedIn session cookie from your NORMAL Chrome:\n\n"
+            "1. In your regular Chrome (where you're logged in), open linkedin.com\n"
+            "2. Press F12 to open DevTools -> [bold]Application[/bold] tab\n"
+            "3. Left sidebar: Storage -> Cookies -> https://www.linkedin.com\n"
+            "4. Find the cookie named [bold]li_at[/bold] and copy its Value\n\n"
+            "Treat that value like a password — it IS your logged-in session.",
+            title="Import LinkedIn session"))
+        value = Prompt.ask("Paste the li_at value (input hidden)",
+                           password=True).strip()
+        if not value:
+            raise typer.Exit(code=_fail("no cookie value provided"))
+        with BrowserSession(cfg) as session:
+            session.context.add_cookies([{
+                "name": "li_at", "value": value,
+                "domain": ".linkedin.com", "path": "/",
+                "httpOnly": True, "secure": True, "sameSite": "None",
+            }])
+            page = session.page
+            page.goto("https://www.linkedin.com/feed/")
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3000)
+            if "feed" in page.url:
+                console.print("[green]LinkedIn session imported and verified — "
+                              "you're logged in. It will persist across runs.[/green]")
+            else:
+                console.print(f"[yellow]Cookie set, but LinkedIn landed on "
+                              f"{page.url} instead of the feed. If that's a "
+                              "login page, the cookie value was wrong or "
+                              "expired — copy it again carefully.[/yellow]")
+                Prompt.ask("If a verification page is showing, complete it in "
+                           "the browser, then press Enter", default="")
+        return
+
     with BrowserSession(cfg) as session:
         page = session.page
         page.goto("https://www.linkedin.com/login")
