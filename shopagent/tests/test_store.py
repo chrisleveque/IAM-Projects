@@ -96,6 +96,86 @@ def test_order_upsert_preserves_cj_linkage(store):
     assert o["cj_order_id"] == "CJ123"
 
 
+def test_images_json_migration_for_old_databases(tmp_path):
+    import sqlite3
+
+    from shopagent.store import Store
+    # simulate a database created before the images_json column existed
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cj_product_id TEXT NOT NULL, cj_vid TEXT DEFAULT '',
+        name TEXT NOT NULL, niche TEXT DEFAULT '',
+        supplier_price REAL, shipping_estimate REAL, proposed_price REAL,
+        listing_json TEXT DEFAULT '', shopify_product_id TEXT DEFAULT '',
+        status TEXT DEFAULT 'candidate', notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(cj_product_id))""")
+    conn.execute("INSERT INTO products (cj_product_id, name, created_at, updated_at)"
+                 " VALUES ('CJ-OLD', 'Old Thing', 'x', 'x')")
+    conn.commit()
+    conn.close()
+
+    store = Store(db)  # must add the column without touching existing rows
+    p = store.list_products()[0]
+    assert p["name"] == "Old Thing"
+    assert p["images_json"] == "[]"
+    store.close()
+
+
+def test_amazon_columns_migration_for_pre_amazon_databases(tmp_path):
+    import sqlite3
+
+    from shopagent.store import Store
+    # simulate a database created before the Amazon channel columns existed
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cj_product_id TEXT NOT NULL, cj_vid TEXT DEFAULT '',
+        name TEXT NOT NULL, niche TEXT DEFAULT '',
+        supplier_price REAL, shipping_estimate REAL, proposed_price REAL,
+        images_json TEXT DEFAULT '[]',
+        listing_json TEXT DEFAULT '', shopify_product_id TEXT DEFAULT '',
+        status TEXT DEFAULT 'candidate', notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(cj_product_id))""")
+    conn.execute("""CREATE TABLE orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shopify_order_id TEXT NOT NULL, order_number TEXT DEFAULT '',
+        customer_email TEXT DEFAULT '', line_items_json TEXT DEFAULT '[]',
+        shipping_address_json TEXT DEFAULT '{}', cj_order_id TEXT DEFAULT '',
+        tracking_number TEXT DEFAULT '', status TEXT DEFAULT 'new',
+        notes TEXT DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(shopify_order_id))""")
+    conn.execute("INSERT INTO products (cj_product_id, name, created_at, updated_at)"
+                 " VALUES ('CJ-OLD', 'Old Thing', 'x', 'x')")
+    conn.execute("INSERT INTO orders (shopify_order_id, created_at, updated_at)"
+                 " VALUES ('gid://shopify/Order/1', 'x', 'x')")
+    conn.commit()
+    conn.close()
+
+    store = Store(db)
+    p = store.list_products()[0]
+    assert p["amazon_sku"] == "" and p["amazon_status"] == "" \
+        and p["amazon_submission_id"] == ""
+    o = store.list_orders()[0]
+    assert o["channel"] == "shopify"
+    store.close()
+
+
+def test_amazon_action_types_validate_payload(store):
+    with pytest.raises(ValueError, match="missing keys"):
+        store.propose(_approval(action_type="amazon.create_listing",
+                                payload={"sku": "V1"}))
+    approval_id = store.propose(_approval(
+        action_type="amazon.confirm_shipment", agent="fulfillment",
+        payload={"amazon_order_id": "111-1", "tracking_number": "T1",
+                 "carrier_code": "Other", "order_items": []}))
+    assert store.get_approval(approval_id).action_type == "amazon.confirm_shipment"
+
+
 def test_agent_run_log(store):
     store.log_run("research", "find products", "ok", "saved 3", tool_calls=7,
                   input_tokens=100, output_tokens=50)

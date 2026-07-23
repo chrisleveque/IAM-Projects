@@ -59,6 +59,55 @@ def test_create_product_two_step(tmp_path):
     assert "productVariantsBulkUpdate" in queries[1]
 
 
+def test_create_product_sends_media():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if "productCreate" in body["query"]:
+            captured.update(body["variables"])
+            return httpx.Response(200, json={"data": {"productCreate": {
+                "product": {"id": "gid://shopify/Product/1", "title": "T",
+                            "variants": {"nodes": [{"id": "gid://shopify/ProductVariant/11"}]}},
+                "userErrors": []}}})
+        return httpx.Response(200, json={"data": {"productVariantsBulkUpdate":
+                                                  {"userErrors": []}}})
+
+    client = _gql_client(handler)
+    client.create_product("T", "<p>d</p>", ["a"], "19.99",
+                          image_urls=["https://img.example/1.jpg"])
+    assert captured["media"] == [{"originalSource": "https://img.example/1.jpg",
+                                  "mediaContentType": "IMAGE"}]
+
+
+def test_fulfill_order_two_step():
+    queries = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        queries.append(body)
+        if "fulfillmentOrders" in body["query"]:
+            return httpx.Response(200, json={"data": {"order": {
+                "fulfillmentOrders": {"nodes": [
+                    {"id": "gid://shopify/FulfillmentOrder/1", "status": "OPEN"},
+                    {"id": "gid://shopify/FulfillmentOrder/2", "status": "CLOSED"},
+                ]}}}})
+        return httpx.Response(200, json={"data": {"fulfillmentCreate": {
+            "fulfillment": {"id": "gid://shopify/Fulfillment/9", "status": "SUCCESS",
+                            "trackingInfo": [{"number": "TRACK1", "company": "CJPacket"}]},
+            "userErrors": []}}})
+
+    client = _gql_client(handler)
+    result = client.fulfill_order("gid://shopify/Order/5", "TRACK1")
+    assert result["status"] == "SUCCESS"
+    fulfillment_input = queries[1]["variables"]["fulfillment"]
+    # only the OPEN fulfillment order is fulfilled, with tracking + notification
+    assert fulfillment_input["lineItemsByFulfillmentOrder"] == [
+        {"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/1"}]
+    assert fulfillment_input["trackingInfo"]["number"] == "TRACK1"
+    assert fulfillment_input["notifyCustomer"] is True
+
+
 def test_user_errors_raise():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"data": {"productCreate": {

@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from shopagent.agents.amazon import AmazonListingAgent
 from shopagent.agents.fulfillment import FulfillmentAgent
 from shopagent.agents.listings import ListingsAgent
 from shopagent.agents.marketing import MarketingAgent
@@ -121,6 +122,118 @@ def test_fulfillment_unmapped_items_reported(store, cfg, shopify, cj):
     # sku still maps via by_vid? V-PET-001-A not in pipeline -> unmapped
     assert mapped["cj_items"] == []
     assert mapped["unmapped"]
+
+
+def test_fulfillment_agent_proposes_shopify_fulfillment(store, cfg, shopify, cj):
+    order_id = store.upsert_order("gid://shopify/Order/8000000001",
+                                  order_number="#1001")
+    store.update_order(order_id, status="cj_placed", cj_order_id="MOCKCJ000001")
+    ai = FakeAIClient(script=[
+        ("update_order_status", {"order_id": order_id, "status": "shipped",
+                                 "tracking_number": "CJMOCK000001"}),
+        ("propose_action", {"action_type": "shopify.fulfill_order",
+                            "title": "Mark #1001 fulfilled with tracking",
+                            "payload": {"shopify_order_id": "gid://shopify/Order/8000000001",
+                                        "tracking_number": "CJMOCK000001",
+                                        "notify_customer": True},
+                            "rationale": "CJ shipped it",
+                            "ref_table": "orders", "ref_id": order_id}),
+    ])
+    FulfillmentAgent(ai, store, cfg, shopify=shopify, cj=cj).run("track")
+    pending = store.list_approvals("pending")
+    assert len(pending) == 1
+    assert pending[0].action_type == "shopify.fulfill_order"
+    assert store.get_order(order_id)["status"] == "shipped"
+
+
+def test_fulfillment_agent_syncs_amazon_orders(store, cfg, shopify, cj, amazon):
+    store.upsert_product("CJ-PET-002", "LED Safety Dog Collar, USB Rechargeable",
+                         cj_vid="V-PET-002-A")
+    ai = FakeAIClient(script=[("sync_amazon_orders", {})])
+    FulfillmentAgent(ai, store, cfg, shopify=shopify, cj=cj, amazon=amazon).run("sync")
+    orders = store.list_orders()
+    assert len(orders) == 2
+    assert all(o["channel"] == "amazon" for o in orders)
+
+
+def test_fulfillment_agent_without_amazon_client_noop(store, cfg, shopify, cj):
+    ai = FakeAIClient(script=[("sync_amazon_orders", {})])
+    FulfillmentAgent(ai, store, cfg, shopify=shopify, cj=cj, amazon=None).run("sync")
+    assert store.list_orders() == []
+    note = ai.calls[0][2]
+    assert "not configured" in note["note"]
+
+
+def test_fulfillment_agent_proposes_amazon_shipment_confirmation(store, cfg, shopify,
+                                                                   cj, amazon):
+    order_id = store.upsert_order("111-2233445-6677889", channel="amazon",
+                                  order_number="111-2233445-6677889")
+    store.update_order(order_id, status="cj_placed", cj_order_id="MOCKCJ000002")
+    ai = FakeAIClient(script=[
+        ("update_order_status", {"order_id": order_id, "status": "shipped",
+                                 "tracking_number": "CJMOCK000002"}),
+        ("propose_action", {"action_type": "amazon.confirm_shipment",
+                            "title": "Confirm shipment for 111-2233445-6677889",
+                            "payload": {"amazon_order_id": "111-2233445-6677889",
+                                        "tracking_number": "CJMOCK000002",
+                                        "carrier_code": "Other",
+                                        "order_items": [{"order_item_id": "OI-0001",
+                                                         "quantity": 1}]},
+                            "rationale": "CJ shipped it",
+                            "ref_table": "orders", "ref_id": order_id}),
+    ])
+    FulfillmentAgent(ai, store, cfg, shopify=shopify, cj=cj, amazon=amazon).run("track")
+    pending = store.list_approvals("pending")
+    assert len(pending) == 1
+    assert pending[0].action_type == "amazon.confirm_shipment"
+    assert store.get_order(order_id)["status"] == "shipped"
+
+
+def test_amazon_agent_validates_then_proposes_listing(store, cfg, amazon):
+    product_id = store.upsert_product(
+        "CJ-PET-002", "LED Safety Dog Collar, USB Rechargeable",
+        cj_vid="V-PET-002-A", proposed_price=16.99,
+        images_json=json.dumps(["https://mock.cjimg.example/CJ-PET-002/1.jpg"]))
+    store.update_product(product_id, status="listed")
+    attributes = {"item_name": [{"value": "LED Safety Dog Collar"}],
+                  "brand": [{"value": "Generic"}]}
+    ai = FakeAIClient(script=[
+        ("get_candidate", {"product_id": product_id}),
+        ("search_product_types", {"keywords": "dog collar"}),
+        ("validate_listing", {"sku": "V-PET-002-A", "product_type": "PET_SUPPLIES",
+                              "attributes": attributes}),
+        ("mark_amazon_status", {"product_id": product_id, "status": "proposed"}),
+        ("propose_action", {"action_type": "amazon.create_listing",
+                            "title": "Amazon: LED Safety Dog Collar",
+                            "payload": {"sku": "V-PET-002-A",
+                                        "product_type": "PET_SUPPLIES",
+                                        "attributes": attributes},
+                            "rationale": "cross-list a proven Shopify winner",
+                            "ref_table": "products", "ref_id": product_id}),
+    ])
+    AmazonListingAgent(ai, store, cfg, amazon=amazon).run("cross-list")
+    validated = ai.calls[2][2]
+    assert validated["status"] == "VALID"
+    assert store.get_product(product_id)["amazon_status"] == "proposed"
+    pending = store.list_approvals("pending")
+    assert len(pending) == 1
+    assert pending[0].action_type == "amazon.create_listing"
+    assert pending[0].payload["sku"] == "V-PET-002-A"
+
+
+def test_amazon_agent_validation_reports_issues(store, cfg, amazon):
+    product_id = store.upsert_product("CJ-PET-003", "Slicker Brush",
+                                      cj_vid="V-PET-003-A")
+    ai = FakeAIClient(script=[
+        ("validate_listing", {"sku": "V-PET-003-A", "product_type": "PET_SUPPLIES",
+                              "attributes": {"item_name": [{"value": "Slicker Brush"}]}}),
+    ])
+    AmazonListingAgent(ai, store, cfg, amazon=amazon).run("cross-list")
+    result = ai.calls[0][2]
+    assert result["status"] == "INVALID"
+    assert result["issues"][0]["attribute_names"] == ["brand"]
+    # no listing was proposed since the agent never called propose_action
+    assert store.list_approvals("pending") == []
 
 
 def test_support_agent_reads_inbox_and_proposes_reply(store, cfg):

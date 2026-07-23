@@ -2,6 +2,7 @@
 *.db
 .cj_token.json
 .shopify_token.json
+.amazon_token.json
 output/
 __pycache__/
 *.egg-info/

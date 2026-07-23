@@ -4,7 +4,14 @@ import httpx
 import pytest
 
 from shopagent.integrations.cj_client import (CJClient, CJError, MockCJClient,
-                                              parse_price_range)
+                                              parse_images, parse_price_range)
+
+
+def test_parse_images():
+    assert parse_images({"productImageSet": ["a.jpg", "b.jpg"]}) == ["a.jpg", "b.jpg"]
+    assert parse_images({"productImage": '["a.jpg","b.jpg"]'}) == ["a.jpg", "b.jpg"]
+    assert parse_images({"productImage": "single.jpg"}) == ["single.jpg"]
+    assert parse_images({}) == []
 
 
 def test_parse_price_range():

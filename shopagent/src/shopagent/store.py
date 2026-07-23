@@ -26,6 +26,11 @@ APPROVAL_STATUSES = ("pending", "approved", "executed", "failed", "rejected")
 ACTION_TYPES: dict[str, list[str]] = {
     "shopify.create_product": ["title", "description_html", "tags", "price", "vendor"],
     "shopify.update_product": ["shopify_product_id", "fields"],
+    "shopify.fulfill_order": ["shopify_order_id", "tracking_number"],
+    "amazon.create_listing": ["sku", "product_type", "attributes"],
+    "amazon.update_price": ["sku", "product_type", "price"],
+    "amazon.confirm_shipment": ["amazon_order_id", "tracking_number", "carrier_code",
+                                "order_items"],
     "cj.create_order": ["order_ref", "cj_items", "shipping_address", "logistic_name"],
     "support.send_reply": ["customer_email", "subject", "body"],
     "marketing.publish": ["channel", "title", "body"],
@@ -41,8 +46,12 @@ CREATE TABLE IF NOT EXISTS products (
     supplier_price REAL,
     shipping_estimate REAL,
     proposed_price REAL,
+    images_json TEXT DEFAULT '[]',
     listing_json TEXT DEFAULT '',
     shopify_product_id TEXT DEFAULT '',
+    amazon_sku TEXT DEFAULT '',
+    amazon_status TEXT DEFAULT '',
+    amazon_submission_id TEXT DEFAULT '',
     status TEXT DEFAULT 'candidate',
     notes TEXT DEFAULT '',
     created_at TEXT NOT NULL,
@@ -52,7 +61,8 @@ CREATE TABLE IF NOT EXISTS products (
 
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    shopify_order_id TEXT NOT NULL,
+    shopify_order_id TEXT NOT NULL,  -- the channel's external order id (see channel)
+    channel TEXT DEFAULT 'shopify',
     order_number TEXT DEFAULT '',
     customer_email TEXT DEFAULT '',
     line_items_json TEXT DEFAULT '[]',
@@ -130,7 +140,26 @@ class Store:
         self.conn = sqlite3.connect(str(db_path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Additive migrations for databases created by earlier versions."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(products)")}
+        if "images_json" not in cols:
+            self.conn.execute(
+                "ALTER TABLE products ADD COLUMN images_json TEXT DEFAULT '[]'")
+        # Amazon channel fields: amazon_status is a parallel per-channel state
+        # ('' | proposed | submitted | live | blocked) so cross-listing never
+        # fights the primary Shopify pipeline status.
+        for col in ("amazon_sku", "amazon_status", "amazon_submission_id"):
+            if col not in cols:
+                self.conn.execute(
+                    f"ALTER TABLE products ADD COLUMN {col} TEXT DEFAULT ''")
+        order_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(orders)")}
+        if "channel" not in order_cols:
+            self.conn.execute(
+                "ALTER TABLE orders ADD COLUMN channel TEXT DEFAULT 'shopify'")
 
     def close(self) -> None:
         self.conn.close()
@@ -146,7 +175,7 @@ class Store:
         now = _now()
         if row:
             allowed = {"cj_vid", "name", "niche", "supplier_price", "shipping_estimate",
-                       "proposed_price", "notes"}
+                       "proposed_price", "images_json", "notes"}
             updates = {k: v for k, v in fields.items() if k in allowed}
             if updates:
                 sets = ", ".join(f"{k} = ?" for k in updates)
@@ -199,7 +228,7 @@ class Store:
         now = _now()
         if row:
             allowed = {"order_number", "customer_email", "line_items_json",
-                       "shipping_address_json"}
+                       "shipping_address_json", "channel"}
             updates = {k: v for k, v in fields.items() if k in allowed}
             if updates:
                 sets = ", ".join(f"{k} = ?" for k in updates)
@@ -237,6 +266,10 @@ class Store:
             "SELECT * FROM orders WHERE shopify_order_id = ?", (shopify_order_id,)
         ).fetchone()
         return dict(row) if row else None
+
+    # the shopify_order_id column holds whichever channel's order id (see
+    # the orders schema); this alias names that honestly for multi-channel use
+    get_order_by_external_id = get_order_by_shopify_id
 
     def list_orders(self, status: str | None = None) -> list[dict]:
         if status:

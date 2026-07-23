@@ -182,20 +182,25 @@ class ShopifyClient:
         return out
 
     def create_product(self, title: str, description_html: str, tags: list[str],
-                       price: str, vendor: str = "") -> dict:
+                       price: str, vendor: str = "",
+                       image_urls: list[str] | None = None) -> dict:
         # productCreate cannot set a variant price; Shopify auto-creates a
         # default variant which we then price with a bulk variant update.
+        # Images are attached at create time: Shopify fetches each URL itself.
+        media = [{"originalSource": url, "mediaContentType": "IMAGE"}
+                 for url in (image_urls or [])]
         data = self._gql(
             """
-            mutation($product: ProductCreateInput!) {
-              productCreate(product: $product) {
+            mutation($product: ProductCreateInput!, $media: [CreateMediaInput!]) {
+              productCreate(product: $product, media: $media) {
                 product { id title variants(first: 1) { nodes { id } } }
                 userErrors { field message }
               }
             }
             """,
             {"product": {"title": title, "descriptionHtml": description_html,
-                         "tags": tags, "vendor": vendor}},
+                         "tags": tags, "vendor": vendor},
+             "media": media},
         )
         payload = data["productCreate"]
         self._check_user_errors(payload, "productCreate")
@@ -236,6 +241,55 @@ class ShopifyClient:
         payload = data["productUpdate"]
         self._check_user_errors(payload, "productUpdate")
         return payload["product"]
+
+    def fulfill_order(self, shopify_order_id: str, tracking_number: str,
+                      tracking_company: str = "CJPacket",
+                      notify_customer: bool = True) -> dict:
+        """Create a fulfillment for all open fulfillment orders of an order,
+        attaching the tracking number. notify_customer sends Shopify's
+        standard shipping-confirmation email."""
+        data = self._gql(
+            """
+            query($id: ID!) {
+              order(id: $id) {
+                fulfillmentOrders(first: 10) {
+                  nodes { id status }
+                }
+              }
+            }
+            """,
+            {"id": shopify_order_id},
+        )
+        if not data.get("order"):
+            raise ShopifyError(f"no order {shopify_order_id}")
+        open_fos = [fo["id"] for fo in data["order"]["fulfillmentOrders"]["nodes"]
+                    if fo["status"] in ("OPEN", "IN_PROGRESS")]
+        if not open_fos:
+            raise ShopifyError(
+                f"order {shopify_order_id} has no open fulfillment orders "
+                "(already fulfilled?)")
+        data = self._gql(
+            """
+            mutation($fulfillment: FulfillmentInput!) {
+              fulfillmentCreate(fulfillment: $fulfillment) {
+                fulfillment { id status trackingInfo { number company } }
+                userErrors { field message }
+              }
+            }
+            """,
+            {"fulfillment": {
+                "lineItemsByFulfillmentOrder":
+                    [{"fulfillmentOrderId": fo_id} for fo_id in open_fos],
+                "trackingInfo": {"number": tracking_number,
+                                 "company": tracking_company},
+                "notifyCustomer": notify_customer,
+            }},
+        )
+        payload = data["fulfillmentCreate"]
+        self._check_user_errors(payload, "fulfillmentCreate")
+        fulfillment = payload["fulfillment"]
+        return {"fulfillment_id": fulfillment["id"], "status": fulfillment["status"],
+                "tracking_number": tracking_number}
 
     def list_open_orders(self, limit: int = 20) -> list[dict]:
         data = self._gql(
@@ -293,13 +347,30 @@ class MockShopifyClient:
         return copy.deepcopy(self._products[:limit])
 
     def create_product(self, title: str, description_html: str, tags: list[str],
-                       price: str, vendor: str = "") -> dict:
+                       price: str, vendor: str = "",
+                       image_urls: list[str] | None = None) -> dict:
         product = {"id": f"gid://shopify/Product/{self._next_id}", "title": title,
                    "status": "ACTIVE", "vendor": vendor, "tags": list(tags),
-                   "price": str(price), "description_html": description_html}
+                   "price": str(price), "description_html": description_html,
+                   "images": list(image_urls or [])}
         self._next_id += 1
         self._products.append(product)
         return {"id": product["id"], "title": title, "price": str(price)}
+
+    def fulfill_order(self, shopify_order_id: str, tracking_number: str,
+                      tracking_company: str = "CJPacket",
+                      notify_customer: bool = True) -> dict:
+        for order in self._orders:
+            if order["id"] == shopify_order_id:
+                if order["displayFulfillmentStatus"] == "FULFILLED":
+                    raise ShopifyError(
+                        f"order {shopify_order_id} has no open fulfillment orders "
+                        "(already fulfilled?)")
+                order["displayFulfillmentStatus"] = "FULFILLED"
+                order["tracking_number"] = tracking_number
+                return {"fulfillment_id": f"gid://shopify/Fulfillment/{self._next_id}",
+                        "status": "SUCCESS", "tracking_number": tracking_number}
+        raise ShopifyError(f"no order {shopify_order_id}")
 
     def update_product(self, shopify_product_id: str, fields: dict) -> dict:
         for product in self._products:
