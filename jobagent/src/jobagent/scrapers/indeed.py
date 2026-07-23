@@ -5,6 +5,7 @@ All selectors live in SELECTORS — first place to look when scanning breaks.
 
 from __future__ import annotations
 
+import re
 from urllib.parse import quote_plus
 
 from rich.console import Console
@@ -33,6 +34,35 @@ SEARCH_URL = "https://www.indeed.com/jobs"
 
 def job_url_from_jk(jk: str) -> str:
     return f"https://www.indeed.com/viewjob?jk={jk}"
+
+
+def jk_from_url(url: str) -> str | None:
+    """Extract the job key from any Indeed URL shape (viewjob?jk=, rc/clk?jk=...)."""
+    m = re.search(r"\bjk=([A-Za-z0-9]+)", url)
+    return m.group(1) if m else None
+
+
+def fetch_job(session: BrowserSession, url: str, console: Console) -> Job | None:
+    """Fetch one job by URL (e.g. pasted from the user's saved list)."""
+    jk = jk_from_url(url)
+    job_url = job_url_from_jk(jk) if jk else url
+    page = session.page
+    try:
+        page.goto(job_url, wait_until="domcontentloaded")
+        session.pause()
+    except Exception as exc:
+        console.print(f"[red]could not open {job_url}: {type(exc).__name__}[/red]")
+        return None
+    return Job(
+        url=job_url,
+        source="indeed",
+        saved=True,
+        title=_text(page, SELECTORS["detail_title"]),
+        company=_text(page, SELECTORS["detail_company"]),
+        location=_text(page, SELECTORS["detail_location"]),
+        description=_text(page, SELECTORS["description"]),
+        easy_apply=page.locator(SELECTORS["easy_apply_marker"]).count() > 0,
+    )
 
 
 def _text(scope, selector: str) -> str:

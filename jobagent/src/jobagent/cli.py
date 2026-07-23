@@ -172,6 +172,45 @@ def scan(
 
 
 @app.command()
+def add(
+    urls: list[str] = typer.Argument(
+        ..., help="One or more job posting URLs (LinkedIn /jobs/view/... or "
+                  "Indeed viewjob?jk=...) — e.g. copied from your saved list"),
+):
+    """Add specific jobs by pasted URL — no LinkedIn login needed.
+
+    Jobs enter the pipeline tagged as saved (work with tailor/apply --saved).
+    """
+    from .browser import BrowserSession
+    from .scrapers import indeed as indeed_scraper
+    from .scrapers import linkedin as linkedin_scraper
+
+    cfg = _cfg()
+    store = _store(cfg)
+    added = 0
+    with BrowserSession(cfg) as session:
+        for url in urls:
+            if "linkedin.com" in url:
+                job = linkedin_scraper.fetch_job(session, url, console)
+            elif "indeed.com" in url:
+                job = indeed_scraper.fetch_job(session, url, console)
+            else:
+                console.print(f"[yellow]skipping unrecognized URL: {url}[/yellow]")
+                continue
+            if job is None:
+                continue
+            is_new = store.upsert_job(job)
+            note = "" if job.description else (
+                "  [yellow](no description captured — jobagent score will skip "
+                "it; tell Claude if the posting is public)[/yellow]")
+            console.print(f"  [green]{'+' if is_new else '~'}[/green] "
+                          f"{job.title or job.url} — {job.company}{note}")
+            added += 1
+    console.print(f"\n[bold]{added} job(s) added[/bold] (tagged saved ★). "
+                  "Next: [cyan]jobagent score[/cyan]")
+
+
+@app.command()
 def score():
     """Score all unscored jobs against your master resume (uses the Claude API)."""
     from .ai.scorer import score_job
