@@ -42,7 +42,10 @@ SELECTORS = {
 }
 
 SEARCH_URL = "https://www.linkedin.com/jobs/search/"
-SAVED_JOBS_URL = "https://www.linkedin.com/my-items/saved-jobs/"
+# cardType=SAVED pins the Saved tab — without it the page can surface links
+# from the "In Progress" / "Applied" tabs, importing jobs the user already
+# applied to long ago.
+SAVED_JOBS_URL = "https://www.linkedin.com/my-items/saved-jobs/?cardType=SAVED"
 
 
 def canonical_job_url(href: str) -> str:
@@ -179,8 +182,11 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
             session, page, SAVED_JOBS_URL, console):
         return 0
 
+    # Collect links from the main content region only, so sidebar widgets
+    # ("jobs you may be interested in", etc.) can't leak into the import.
+    scope = page.locator("main").first if page.locator("main").count() else page
     hrefs: list[str] = []
-    for a in page.locator(SELECTORS["saved_job_link"]).all():
+    for a in scope.locator(SELECTORS["saved_job_link"]).all():
         href = a.get_attribute("href") or ""
         if "/jobs/view/" in href:
             u = canonical_job_url(href)
