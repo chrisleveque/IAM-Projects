@@ -93,6 +93,9 @@ def login():
 def scan(
     source: Optional[str] = typer.Option(None, help="Only scan one source: linkedin | indeed"),
     saved: bool = typer.Option(False, "--saved", help="Also import your LinkedIn saved jobs"),
+    saved_only: bool = typer.Option(False, "--saved-only",
+                                    help="Import ONLY your LinkedIn saved jobs; "
+                                         "skip the searches in config.yaml"),
 ):
     """Run the searches in config.yaml and store discovered jobs."""
     from .browser import BrowserSession
@@ -101,7 +104,11 @@ def scan(
 
     cfg = _cfg()
     store = _store(cfg)
-    searches = [s for s in cfg.searches if source is None or s.source == source]
+    if saved_only:
+        saved = True
+        searches = []
+    else:
+        searches = [s for s in cfg.searches if source is None or s.source == source]
     if not searches and not saved:
         raise typer.Exit(code=_fail("no searches configured in config.yaml"))
 
@@ -180,6 +187,8 @@ def review():
 def tailor(
     min_score: Optional[int] = typer.Option(None, help="Override scoring.min_score_to_tailor"),
     url: Optional[str] = typer.Option(None, help="Tailor a single job by URL"),
+    saved: bool = typer.Option(False, "--saved",
+                               help="Only tailor jobs imported from your saved list"),
 ):
     """Generate a tailored resume + cover letter (.docx/.pdf) per qualifying job."""
     from .ai.tailor import tailor_for_job
@@ -197,9 +206,11 @@ def tailor(
             raise typer.Exit(code=_fail(f"job not found in tracker: {url}"))
         jobs = [job]
     else:
+        saved_filter = True if saved else None
         # queued jobs are explicitly user-approved regardless of score
-        jobs = store.list_jobs(status="queued") + [
-            j for j in store.list_jobs(status="scored", min_score=threshold)
+        jobs = store.list_jobs(status="queued", saved=saved_filter) + [
+            j for j in store.list_jobs(status="scored", min_score=threshold,
+                                       saved=saved_filter)
         ]
     if not jobs:
         console.print(f"No jobs at/above score {threshold} to tailor. "
@@ -234,6 +245,8 @@ def tailor(
 @app.command(name="apply")
 def apply_cmd(
     source: Optional[str] = typer.Option(None, help="Only apply on one source: linkedin | indeed"),
+    saved: bool = typer.Option(False, "--saved",
+                               help="Only apply to jobs imported from your saved list"),
 ):
     """Pre-fill applications for tailored jobs. YOU review and click Submit."""
     from .apply import indeed_apply, linkedin_easy_apply
@@ -242,7 +255,8 @@ def apply_cmd(
 
     cfg = _cfg()
     store = _store(cfg)
-    jobs = [j for j in store.list_jobs(status="tailored", source=source)]
+    jobs = store.list_jobs(status="tailored", source=source,
+                           saved=True if saved else None)
     if not jobs:
         console.print("No tailored jobs ready. Run [cyan]jobagent tailor[/cyan] first.")
         return
@@ -303,12 +317,13 @@ def status():
     console.print(Panel(summary, title="pipeline"))
 
     table = Table(show_lines=False)
-    for col in ("score", "status", "title", "company", "source", "easy"):
+    for col in ("score", "status", "title", "company", "source", "easy", "saved"):
         table.add_column(col)
     for job in store.list_jobs()[:25]:
         table.add_row(str(job.score if job.score is not None else "-"), job.status,
                       job.title[:48], job.company[:28], job.source,
-                      "yes" if job.easy_apply else "no")
+                      "yes" if job.easy_apply else "no",
+                      "★" if job.saved else "")
     console.print(table)
 
 

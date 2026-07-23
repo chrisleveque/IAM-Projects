@@ -21,8 +21,8 @@ deliberately: keep the daily cap low, don't run scans in a loop, and stop if
 you get a warning from either platform. You accept this risk by using the tool.
 
 Two lower-risk ways to use it:
-- **Saved-jobs mode**: browse LinkedIn yourself, save jobs, then run
-  `jobagent scan --saved` — the agent only visits jobs you hand-picked.
+- **Saved-jobs mode**: browse LinkedIn yourself, save jobs, then run the
+  pipeline only on your hand-picked list (see "Saved-jobs workflow" below).
 - **Prepare-only**: skip `jobagent apply` entirely and use the tailored
   resume/cover-letter files from `output/` to apply manually.
 
@@ -69,6 +69,22 @@ jobagent tailor          # tailored resume + cover letter per job -> output/<com
 jobagent apply           # pre-fills each application; YOU click Submit in the browser
 jobagent status          # pipeline overview
 ```
+
+### Saved-jobs workflow
+
+Jobs imported from your LinkedIn saved list are tagged (shown as ★ in
+`jobagent status`), so you can run the whole pipeline on just the jobs you
+hand-picked while browsing:
+
+```bash
+jobagent scan --saved-only   # import ONLY your LinkedIn saved jobs (skips config searches)
+jobagent score
+jobagent tailor --saved      # tailor only saved jobs
+jobagent apply --saved       # apply only to saved jobs
+```
+
+`scan --saved` (without `-only`) runs your configured searches *and* imports
+saved jobs; the tag survives re-scans either way.
 
 During `apply`, the agent walks the Easy Apply / Indeed Apply steps, uploads
 the tailored resume, and fills questions from `answers.yaml`. Unknown questions
