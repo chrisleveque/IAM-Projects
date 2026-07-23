@@ -121,6 +121,44 @@ def _detect_easy_apply(page) -> bool:
         return False
 
 
+def _dismiss_guest_modal(page) -> None:
+    """Public job pages show a sign-in modal overlay for logged-out visitors."""
+    try:
+        dismiss = page.locator(
+            "button.modal__dismiss, button[aria-label='Dismiss'], "
+            "button.contextual-sign-in-modal__modal-dismiss").first
+        if dismiss.count() and dismiss.is_visible():
+            dismiss.click()
+    except Exception:
+        pass
+
+
+def fetch_job(session: BrowserSession, url: str, console: Console) -> Job | None:
+    """Fetch one job by URL using the public (logged-out) job page — no
+    LinkedIn login required."""
+    job_url = canonical_job_url(url)
+    page = session.page
+    try:
+        _goto(session, page, job_url)
+    except Exception as exc:
+        console.print(f"[red]could not open {job_url}: {type(exc).__name__}[/red]")
+        return None
+    _dismiss_guest_modal(page)
+    detail = _read_detail_pane(page, title_selector="view_title")
+    if not detail["description"]:
+        # guest pages often collapse the description behind "Show more"
+        try:
+            more = page.locator("button.show-more-less-html__button, "
+                                "button:has-text('Show more')").first
+            if more.count() and more.is_visible():
+                more.click()
+                session.pause()
+                detail = _read_detail_pane(page, title_selector="view_title")
+        except Exception:
+            pass
+    return Job(url=job_url, source="linkedin", saved=True, **detail)
+
+
 def scan(session: BrowserSession, store: Store, spec: SearchSpec, console: Console) -> int:
     """Run one search, click through result cards, store jobs. Returns # new."""
     page = session.page
