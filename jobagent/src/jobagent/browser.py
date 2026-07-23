@@ -9,11 +9,28 @@ from __future__ import annotations
 
 import random
 import time
+from pathlib import Path
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 from rich.console import Console
 
 from .config import AppConfig
+
+ENGINE_MARKER = ".engine"
+
+
+def read_pinned_engine(profile_dir: Path) -> str | None:
+    """Which engine created this profile, if recorded."""
+    marker = profile_dir / ENGINE_MARKER
+    if marker.exists():
+        value = marker.read_text(encoding="utf-8").strip()
+        if value in ("chrome", "chromium"):
+            return value
+    return None
+
+
+def pin_engine(profile_dir: Path, engine: str) -> None:
+    (profile_dir / ENGINE_MARKER).write_text(engine, encoding="utf-8")
 
 
 class BrowserSession:
@@ -31,23 +48,47 @@ class BrowserSession:
             viewport={"width": 1440, "height": 900},
             args=["--disable-blink-features=AutomationControlled"],
         )
-        try:
-            # Prefer the user's installed Google Chrome: bot protection
-            # (Indeed/Cloudflare, Google SSO) fingerprints bundled Chromium as
-            # automation and blocks logins; real Chrome passes far more often.
-            self.context = self._pw.chromium.launch_persistent_context(
-                str(profile_dir), channel="chrome", **launch_kwargs
-            )
-            self.engine = "chrome"
-        except Exception:
+        # The engine is PINNED per profile: Chrome and Chromium encrypt the
+        # cookie store differently, so a silent switch between runs makes all
+        # saved logins unreadable — which looks like being mysteriously logged
+        # out. Whichever engine creates the profile is the only one allowed to
+        # open it.
+        pinned = read_pinned_engine(profile_dir)
+        if pinned == "chrome":
+            try:
+                self.context = self._pw.chromium.launch_persistent_context(
+                    str(profile_dir), channel="chrome", **launch_kwargs
+                )
+                self.engine = "chrome"
+            except Exception as exc:
+                self._pw.stop()
+                raise RuntimeError(
+                    "This browser profile belongs to real Chrome, but Chrome "
+                    "failed to launch just now. Falling back to Chromium would "
+                    "silently log you out, so stopping instead. Wait for any "
+                    "Chrome update to finish and retry — or delete the "
+                    "browser_profile folder to start fresh."
+                ) from exc
+        elif pinned == "chromium":
             self.context = self._pw.chromium.launch_persistent_context(
                 str(profile_dir), **launch_kwargs
             )
             self.engine = "chromium"
-        # Engine flip-flops between runs break cookie persistence (Chrome and
-        # Chromium encrypt the cookie store differently) — surface it so a
-        # flip is visible in the terminal output.
-        Console().print(f"[dim]browser engine: {self.engine}[/dim]")
+        else:
+            # Fresh profile: prefer the user's real Google Chrome (bot
+            # protection trusts it far more than bundled Chromium), then pin.
+            try:
+                self.context = self._pw.chromium.launch_persistent_context(
+                    str(profile_dir), channel="chrome", **launch_kwargs
+                )
+                self.engine = "chrome"
+            except Exception:
+                self.context = self._pw.chromium.launch_persistent_context(
+                    str(profile_dir), **launch_kwargs
+                )
+                self.engine = "chromium"
+            pin_engine(profile_dir, self.engine)
+        Console().print(f"[dim]browser engine: {self.engine} (pinned to this profile)[/dim]")
         self.context.set_default_timeout(15_000)
         return self
 
