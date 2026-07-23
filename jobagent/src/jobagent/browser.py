@@ -11,6 +11,7 @@ import random
 import time
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
+from rich.console import Console
 
 from .config import AppConfig
 
@@ -37,10 +38,16 @@ class BrowserSession:
             self.context = self._pw.chromium.launch_persistent_context(
                 str(profile_dir), channel="chrome", **launch_kwargs
             )
+            self.engine = "chrome"
         except Exception:
             self.context = self._pw.chromium.launch_persistent_context(
                 str(profile_dir), **launch_kwargs
             )
+            self.engine = "chromium"
+        # Engine flip-flops between runs break cookie persistence (Chrome and
+        # Chromium encrypt the cookie store differently) — surface it so a
+        # flip is visible in the terminal output.
+        Console().print(f"[dim]browser engine: {self.engine}[/dim]")
         self.context.set_default_timeout(15_000)
         return self
 
