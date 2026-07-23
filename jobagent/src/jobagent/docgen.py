@@ -8,9 +8,58 @@ import subprocess
 from pathlib import Path
 
 from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Pt
 
 from .ai.tailor import TailoredResume
+
+# Matches URL-ish contact segments like linkedin.com/in/me, github.com/me,
+# tryhackme.com/p/me, https://example.io — but not phones or "City, ST".
+_URL_RE = re.compile(r"^(https?://)?(www\.)?[\w-]+(\.[\w-]+)+(/\S*)?$", re.I)
+
+
+def _add_hyperlink(paragraph, text: str, url: str) -> None:
+    """python-docx has no high-level hyperlink API; build the XML directly."""
+    r_id = paragraph.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), r_id)
+    run = OxmlElement("w:r")
+    props = OxmlElement("w:rPr")
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), "0563C1")
+    underline = OxmlElement("w:u")
+    underline.set(qn("w:val"), "single")
+    props.append(color)
+    props.append(underline)
+    run.append(props)
+    text_el = OxmlElement("w:t")
+    text_el.text = text
+    run.append(text_el)
+    hyperlink.append(run)
+    paragraph._p.append(hyperlink)
+
+
+def _write_contact_line(doc: Document, contact: str) -> None:
+    """Render the contact line with real, clickable links for URLs and email."""
+    para = doc.add_paragraph()
+    segments = [s.strip() for s in re.split(r"\s*[·|]\s*", contact)]
+    first = True
+    for segment in segments:
+        if not segment:
+            continue
+        if not first:
+            para.add_run("  ·  ")
+        first = False
+        if "@" in segment and " " not in segment and not segment.lower().startswith(
+                ("http", "www")):
+            _add_hyperlink(para, segment, f"mailto:{segment}")
+        elif _URL_RE.match(segment):
+            url = segment if segment.lower().startswith("http") else f"https://{segment}"
+            _add_hyperlink(para, segment, url)
+        else:
+            para.add_run(segment)
 
 
 def slugify(text: str, max_len: int = 40) -> str:
@@ -30,7 +79,7 @@ def write_resume_docx(resume: TailoredResume, path: Path) -> Path:
 
     doc.add_heading(resume.name, level=0)
     if resume.contact:
-        doc.add_paragraph(resume.contact)
+        _write_contact_line(doc, resume.contact)
     if resume.summary:
         doc.add_heading("Summary", level=1)
         doc.add_paragraph(resume.summary)

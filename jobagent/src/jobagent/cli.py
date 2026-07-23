@@ -211,7 +211,8 @@ def tailor(
     for job in jobs:
         console.print(f"Tailoring for [bold]{job.title}[/bold] at {job.company} ...")
         try:
-            package = tailor_for_job(ai, resume_text, job)
+            package = tailor_for_job(ai, resume_text, job,
+                                     extra_instructions=cfg.tailoring.instructions)
         except Exception as exc:
             console.print(f"[red]tailoring failed: {exc}[/red]")
             continue

@@ -42,6 +42,26 @@ def test_write_cover_letter_docx(tmp_path):
     assert "Second paragraph." in text
 
 
+def test_contact_line_renders_clickable_hyperlinks(tmp_path):
+    resume = sample_resume()
+    resume.contact = ("Austin, TX · (555) 555-5555 · chris@example.com · "
+                      "linkedin.com/in/chris-l · github.com/chrisl · "
+                      "tryhackme.com/p/chrisl")
+    path = write_resume_docx(resume, tmp_path / "resume.docx")
+    doc = Document(str(path))
+    targets = [rel.target_ref for rel in doc.part.rels.values()
+               if rel.reltype.endswith("/hyperlink")]
+    assert "mailto:chris@example.com" in targets
+    assert "https://linkedin.com/in/chris-l" in targets
+    assert "https://github.com/chrisl" in targets
+    assert "https://tryhackme.com/p/chrisl" in targets
+    # plain segments must NOT become links
+    assert not any("Austin" in t or "555" in t for t in targets)
+    # the visible text still contains everything
+    text = all_text(path)
+    assert "linkedin.com/in/chris-l" in text and "(555) 555-5555" in text
+
+
 def test_slugify():
     assert slugify("Sr. IAM Engineer @ Acme, Inc.") == "sr-iam-engineer-acme-inc"
     assert slugify("///") == "job"

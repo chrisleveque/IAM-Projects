@@ -35,6 +35,13 @@ class AIConfig(BaseModel):
     max_tokens: int = 8192
 
 
+class TailoringConfig(BaseModel):
+    # Free-text style guidance appended to every resume-tailoring request,
+    # e.g. "Write the professional summary in first person, max 2 sentences,
+    # no buzzwords like 'results-driven' or 'dynamic'."
+    instructions: str = ""
+
+
 class PathsConfig(BaseModel):
     output_dir: str = "output"
     db_path: str = "jobagent.db"
@@ -48,6 +55,7 @@ class AppConfig(BaseModel):
     limits: Limits = Field(default_factory=Limits)
     scoring: ScoringConfig = Field(default_factory=ScoringConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
+    tailoring: TailoringConfig = Field(default_factory=TailoringConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     root: Path = Path(".")
 
