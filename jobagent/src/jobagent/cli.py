@@ -95,14 +95,16 @@ def login(
             page.wait_for_timeout(3000)
             if "feed" in page.url:
                 console.print("[green]LinkedIn session imported and verified — "
-                              "you're logged in. It will persist across runs.[/green]")
+                              "you're logged in.[/green]")
             else:
                 console.print(f"[yellow]Cookie set, but LinkedIn landed on "
                               f"{page.url} instead of the feed. If that's a "
                               "login page, the cookie value was wrong or "
                               "expired — copy it again carefully.[/yellow]")
-                Prompt.ask("If a verification page is showing, complete it in "
-                           "the browser, then press Enter", default="")
+            Prompt.ask("Look at the browser window — you should see your "
+                       "LinkedIn feed. Press Enter here to close it (your "
+                       "session is saved on disk and the next command reuses it)",
+                       default="")
         return
 
     with BrowserSession(cfg) as session:
