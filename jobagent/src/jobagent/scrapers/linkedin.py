@@ -11,10 +11,13 @@ from __future__ import annotations
 from urllib.parse import quote_plus, urlsplit
 
 from rich.console import Console
+from rich.prompt import Prompt
 
 from ..browser import BrowserSession
 from ..config import SearchSpec
 from ..store import Job, Store
+
+LOGIN_MARKERS = ("/login", "/uas/", "authwall", "/checkpoint", "/signup")
 
 SELECTORS = {
     "card": "li[data-occludable-job-id], ul.jobs-search__results-list > li",
@@ -70,6 +73,29 @@ def _read_detail_pane(page, title_selector: str = "detail_title") -> dict:
     }
 
 
+def _stuck_on_login(page_url: str) -> bool:
+    return any(marker in page_url for marker in LOGIN_MARKERS)
+
+
+def _login_and_retry(session: BrowserSession, page, url: str,
+                     console: Console) -> bool:
+    """LinkedIn bounced us to a sign-in wall. Keep the window open, let the
+    user sign in right there, then continue to where we were headed.
+    Returns False if we're still stuck after the retry."""
+    console.print("\n[yellow]LinkedIn is asking you to sign in. The browser "
+                  "window stays open — sign in there now (your session will be "
+                  "remembered).[/yellow]")
+    Prompt.ask("Press Enter here once you're signed in", default="")
+    page.goto(url)
+    page.wait_for_load_state("domcontentloaded")
+    session.pause()
+    if _stuck_on_login(page.url):
+        console.print("[red]Still on the sign-in page — finish signing in in the "
+                      "browser, then rerun the scan.[/red]")
+        return False
+    return True
+
+
 def _detect_easy_apply(page) -> bool:
     try:
         btn = page.locator(SELECTORS["easy_apply_button"]).first
@@ -92,8 +118,7 @@ def scan(session: BrowserSession, store: Store, spec: SearchSpec, console: Conso
     page.wait_for_load_state("domcontentloaded")
     session.pause()
 
-    if "/login" in page.url or "authwall" in page.url or "/checkpoint" in page.url:
-        console.print("[red]Not logged in to LinkedIn — run `jobagent login` first.[/red]")
+    if _stuck_on_login(page.url) and not _login_and_retry(session, page, url, console):
         return 0
 
     cards = page.locator(SELECTORS["card"])
@@ -140,6 +165,10 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
     page.wait_for_load_state("domcontentloaded")
     session.pause()
 
+    if _stuck_on_login(page.url) and not _login_and_retry(
+            session, page, SAVED_JOBS_URL, console):
+        return 0
+
     hrefs: list[str] = []
     for a in page.locator(SELECTORS["saved_job_link"]).all():
         href = a.get_attribute("href") or ""
@@ -147,6 +176,11 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
             u = canonical_job_url(href)
             if u not in hrefs:
                 hrefs.append(u)
+    if not hrefs:
+        console.print("[yellow]No saved jobs found on the page. If you do have "
+                      "saved jobs on LinkedIn, the selectors may need updating "
+                      "(see SELECTORS in scrapers/linkedin.py).[/yellow]")
+        return 0
     new_count = 0
     for job_url in hrefs[:limit]:
         try:
