@@ -41,6 +41,13 @@ def apply_to_job(session: BrowserSession, job: Job, ctx: FormContext,
     page.wait_for_load_state("domcontentloaded")
     session.pause()
 
+    # The apply button renders late (client-side hydration) — deciding
+    # "manual" too early misses genuine Easy Apply jobs.
+    try:
+        page.wait_for_selector(SELECTORS["easy_apply_button"], timeout=10_000)
+    except Exception:
+        pass
+
     button = page.locator(SELECTORS["easy_apply_button"]).first
     try:
         if button.count() == 0:

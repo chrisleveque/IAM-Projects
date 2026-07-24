@@ -590,6 +590,23 @@ def debug_job(url: str = typer.Argument(..., help="A LinkedIn job URL that scrap
         except Exception:
             main_len = 0
         console.print(f"  main text length: {main_len}")
+        page.wait_for_timeout(3000)  # let late-rendering buttons hydrate
+        easy = page.locator(li.SELECTORS["easy_apply_button"])
+        console.print(f"  easy_apply_button: {easy.count()} match(es)")
+        if easy.count():
+            first = easy.first
+            try:
+                console.print(f"    text={first.inner_text(timeout=2000)!r} "
+                              f"aria={first.get_attribute('aria-label')!r}")
+            except Exception:
+                pass
+        for b in page.locator("button:has-text('Apply'), a:has-text('Apply')").all()[:5]:
+            try:
+                text = " ".join((b.inner_text(timeout=1500) or "").split())[:60]
+                console.print(f"  apply-ish button: {text!r} "
+                              f"aria={b.get_attribute('aria-label')!r}")
+            except Exception:
+                continue
     console.print(f"\nSaved [bold]{out / 'job_page.png'}[/bold] — send that "
                   "image to Claude along with the output above.")
 
