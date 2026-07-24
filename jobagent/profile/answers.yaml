@@ -7,7 +7,10 @@ contact:
   email: "chrisleveque25@gmail.com"
   phone: "(555) 555-5555"
   city: "City, ST"
+  # These links appear (clickable) in the header of every tailored resume:
   linkedin: "https://www.linkedin.com/in/your-handle"
+  github: "https://github.com/your-handle"
+  tryhackme: "https://tryhackme.com/p/your-handle"
 
 work_authorization:
   authorized_to_work_us: true

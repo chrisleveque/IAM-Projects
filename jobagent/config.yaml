@@ -36,6 +36,9 @@ ai:
 #     Plain, confident language.
 tailoring:
   instructions: ""
+  # Set false to drop the Professional Summary section — its content gets
+  # woven into the experience bullets instead.
+  include_summary: true
 
 paths:
   output_dir: output               # tailored resumes/cover letters land here

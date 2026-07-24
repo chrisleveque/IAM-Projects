@@ -69,13 +69,21 @@ class TailoredPackage(BaseModel):
 
 
 def tailor_for_job(ai, master_resume: str, job: Job,
-                   extra_instructions: str = "") -> TailoredPackage:
+                   extra_instructions: str = "",
+                   include_summary: bool = True) -> TailoredPackage:
     user = (
         f"MASTER RESUME:\n{master_resume}\n\n"
         f"JOB POSTING ({job.title} at {job.company}, {job.location}):\n"
         f"{job.description}\n\n"
         "Tailor the resume and write the cover letter for this posting."
     )
+    if not include_summary:
+        user += (
+            "\n\nDo NOT write a professional summary — set the 'summary' field "
+            "to an empty string. Instead, make the experience bullets carry the "
+            "candidate's strongest, most relevant points for this posting "
+            "(up to 6 bullets for the most relevant role)."
+        )
     if extra_instructions.strip():
         user += (
             "\n\nSTYLE INSTRUCTIONS FROM THE CANDIDATE (follow these for tone "

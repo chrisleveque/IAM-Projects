@@ -40,6 +40,9 @@ class TailoringConfig(BaseModel):
     # e.g. "Write the professional summary in first person, max 2 sentences,
     # no buzzwords like 'results-driven' or 'dynamic'."
     instructions: str = ""
+    # Set false to drop the Professional Summary section entirely; the AI is
+    # told to put that strength into the experience bullets instead.
+    include_summary: bool = True
 
 
 class PathsConfig(BaseModel):
