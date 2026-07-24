@@ -191,6 +191,7 @@ def scan(
     if saved and (source in (None, "linkedin")):
         with BrowserSession(cfg, site="linkedin") as session:
             total_new += linkedin_scraper.scan_saved(session, store, console)
+            linkedin_scraper.backfill_descriptions(session, store, console)
     console.print(f"\n[bold]{total_new} new job(s) discovered.[/bold] "
                   "Next: [cyan]jobagent score[/cyan]")
 
@@ -515,6 +516,7 @@ def go(
 
         console.print("\n[bold]Step 1/4 — importing your saved jobs[/bold]")
         linkedin_scraper.scan_saved(session, store, console)
+        linkedin_scraper.backfill_descriptions(session, store, console)
 
         console.print("\n[bold]Step 2/4 — scoring[/bold] (browser stays open)")
         _score_pending(store, ai, resume_text, threshold)
@@ -534,6 +536,42 @@ def go(
                 session, ready, store, cfg, ai, resume_text, answers,
                 applied_today, cap)
     console.print(f"\nApplied today: {store.count_applied_today()}/{cap}")
+
+
+@app.command(name="debug-job")
+def debug_job(url: str = typer.Argument(..., help="A LinkedIn job URL that scrapes badly")):
+    """Diagnose scraping on one job page: saves a screenshot + HTML and reports
+    which selectors matched. Share the screenshot with Claude to fix selectors."""
+    from .browser import BrowserSession
+    from .scrapers import linkedin as li
+
+    cfg = _cfg()
+    out = cfg.output_dir / "debug"
+    out.mkdir(parents=True, exist_ok=True)
+    with BrowserSession(cfg, site="linkedin") as session:
+        page = session.page
+        li._goto(session, page, li.canonical_job_url(url))
+        page.wait_for_timeout(4000)
+        page.screenshot(path=str(out / "job_page.png"), full_page=True)
+        (out / "job_page.html").write_text(page.content(), encoding="utf-8")
+        console.print(f"landed on: {page.url}")
+        for name in ("view_title", "detail_company", "description", "description_any"):
+            loc = page.locator(li.SELECTORS[name])
+            count = loc.count()
+            sample = ""
+            if count:
+                try:
+                    sample = " ".join(loc.first.inner_text(timeout=3000).split())[:80]
+                except Exception:
+                    sample = "(matched but no text)"
+            console.print(f"  {name}: {count} match(es)  {sample!r}")
+        try:
+            main_len = len(page.locator("main").first.inner_text(timeout=3000))
+        except Exception:
+            main_len = 0
+        console.print(f"  main text length: {main_len}")
+    console.print(f"\nSaved [bold]{out / 'job_page.png'}[/bold] — send that "
+                  "image to Claude along with the output above.")
 
 
 @app.command()
