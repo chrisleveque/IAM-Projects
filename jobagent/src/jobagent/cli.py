@@ -58,17 +58,55 @@ def _fail(msg: str) -> int:
     return 1
 
 
+def _import_linkedin_cookies(cfg, cookies: list[dict]) -> None:
+    from .browser import BrowserSession
+    with BrowserSession(cfg, site="linkedin") as session:
+        session.context.add_cookies(cookies)
+        page = session.page
+        page.goto("https://www.linkedin.com/feed/")
+        page.wait_for_load_state("domcontentloaded")
+        page.wait_for_timeout(3000)
+        if "feed" in page.url:
+            console.print(f"[green]LinkedIn session imported "
+                          f"({len(cookies)} cookie(s)) — you're logged in.[/green]")
+        else:
+            console.print(f"[yellow]Cookies set, but LinkedIn landed on "
+                          f"{page.url} instead of the feed — the export may be "
+                          "stale; re-export and try again.[/yellow]")
+        Prompt.ask("Look at the browser window — you should see your LinkedIn "
+                   "feed. Press Enter here to close it (your session is saved "
+                   "on disk and the next command reuses it)", default="")
+
+
 @app.command()
 def login(
     linkedin_cookie: bool = typer.Option(
         False, "--linkedin-cookie",
-        help="Import your LinkedIn session cookie from your normal browser "
-             "instead of signing in. Use this when LinkedIn's sign-in page "
-             "loops or shows challenge errors."),
+        help="Import your LinkedIn li_at session cookie from your normal "
+             "browser instead of signing in."),
+    cookie_file: Optional[str] = typer.Option(
+        None, "--cookie-file",
+        help="Import a FULL LinkedIn cookie export (JSON from the "
+             "Cookie-Editor extension). Stronger than --linkedin-cookie: the "
+             "whole cookie family transfers, so LinkedIn sees a coherent "
+             "session instead of a lone token."),
 ):
     """Open a browser to log in to LinkedIn and Indeed (cookies persist locally)."""
     from .browser import BrowserSession
     cfg = _cfg()
+
+    if cookie_file:
+        from .cookies import parse_cookie_export
+        try:
+            cookies = parse_cookie_export(Path(cookie_file).read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise typer.Exit(code=_fail(f"could not parse {cookie_file}: {exc}"))
+        if not cookies:
+            raise typer.Exit(code=_fail(
+                "no linkedin.com cookies found in that file — export while on "
+                "linkedin.com so the extension captures its cookies"))
+        _import_linkedin_cookies(cfg, cookies)
+        return
 
     if linkedin_cookie:
         console.print(Panel(
@@ -83,28 +121,11 @@ def login(
                            password=True).strip()
         if not value:
             raise typer.Exit(code=_fail("no cookie value provided"))
-        with BrowserSession(cfg, site="linkedin") as session:
-            session.context.add_cookies([{
-                "name": "li_at", "value": value,
-                "domain": ".linkedin.com", "path": "/",
-                "httpOnly": True, "secure": True, "sameSite": "None",
-            }])
-            page = session.page
-            page.goto("https://www.linkedin.com/feed/")
-            page.wait_for_load_state("domcontentloaded")
-            page.wait_for_timeout(3000)
-            if "feed" in page.url:
-                console.print("[green]LinkedIn session imported and verified — "
-                              "you're logged in.[/green]")
-            else:
-                console.print(f"[yellow]Cookie set, but LinkedIn landed on "
-                              f"{page.url} instead of the feed. If that's a "
-                              "login page, the cookie value was wrong or "
-                              "expired — copy it again carefully.[/yellow]")
-            Prompt.ask("Look at the browser window — you should see your "
-                       "LinkedIn feed. Press Enter here to close it (your "
-                       "session is saved on disk and the next command reuses it)",
-                       default="")
+        _import_linkedin_cookies(cfg, [{
+            "name": "li_at", "value": value,
+            "domain": ".linkedin.com", "path": "/",
+            "httpOnly": True, "secure": True, "sameSite": "None",
+        }])
         return
 
     console.print("For LinkedIn, prefer [cyan]jobagent login --linkedin-cookie[/cyan] "
@@ -176,9 +197,13 @@ def scan(
 
 @app.command()
 def add(
-    urls: list[str] = typer.Argument(
-        ..., help="One or more job posting URLs (LinkedIn /jobs/view/... or "
-                  "Indeed viewjob?jk=...) — e.g. copied from your saved list"),
+    urls: Optional[list[str]] = typer.Argument(
+        None, help="Job posting URLs (LinkedIn /jobs/view/... or Indeed "
+                   "viewjob?jk=...) — or use --paste for many at once"),
+    paste: bool = typer.Option(
+        False, "--paste",
+        help="Paste many URLs at once (one per line; empty line finishes). "
+             "Pairs with the saved-jobs bookmarklet in the README."),
 ):
     """Add specific jobs by pasted URL — no LinkedIn login needed.
 
@@ -190,6 +215,21 @@ def add(
 
     cfg = _cfg()
     store = _store(cfg)
+    urls = list(urls or [])
+    if paste:
+        console.print("Paste job URLs (one per line). Press Enter on an "
+                      "empty line to finish:")
+        while True:
+            try:
+                line = input().strip()
+            except EOFError:
+                break
+            if not line:
+                break
+            urls.extend(line.split())
+    if not urls:
+        raise typer.Exit(code=_fail("no URLs provided — pass them as arguments "
+                                    "or use --paste"))
     groups = {
         "linkedin": [u for u in urls if "linkedin.com" in u],
         "indeed": [u for u in urls if "indeed.com" in u],
