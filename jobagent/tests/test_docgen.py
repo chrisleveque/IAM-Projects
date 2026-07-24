@@ -57,9 +57,12 @@ def test_contact_line_renders_clickable_hyperlinks(tmp_path):
     assert "https://tryhackme.com/p/chrisl" in targets
     # plain segments must NOT become links
     assert not any("Austin" in t or "555" in t for t in targets)
-    # the visible text still contains everything
+    # known sites render as clean labels, not raw URLs
     text = all_text(path)
-    assert "linkedin.com/in/chris-l" in text and "(555) 555-5555" in text
+    for label in ("LinkedIn", "GitHub", "TryHackMe"):
+        assert label in text
+    assert "linkedin.com/in/chris-l" not in text  # raw URL replaced by label
+    assert "(555) 555-5555" in text and "Austin, TX" in text
 
 
 def test_slugify():
