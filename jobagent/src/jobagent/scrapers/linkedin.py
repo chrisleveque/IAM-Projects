@@ -138,6 +138,40 @@ def _dismiss_guest_modal(page) -> None:
         pass
 
 
+def backfill_descriptions(session: BrowserSession, store: Store,
+                          console: Console) -> int:
+    """Re-visit tracked saved jobs whose stored description is missing or
+    junk-short. The saved-list page paginates, so a scan doesn't necessarily
+    revisit every previously imported job."""
+    jobs = [j for j in store.list_jobs(source="linkedin", saved=True)
+            if len(j.description) < 200 and j.status in ("discovered", "scored")]
+    if not jobs:
+        return 0
+    console.print(f"[bold]LinkedIn:[/bold] refreshing {len(jobs)} job(s) with "
+                  "missing descriptions")
+    fixed = 0
+    page = session.page
+    for job in jobs:
+        try:
+            _goto(session, page, job.url)
+            detail = _read_job_view(session, page)
+        except Exception as exc:
+            console.print(f"  [yellow]{job.url}: {type(exc).__name__}[/yellow]")
+            continue
+        if len(detail["description"]) >= 200:
+            store.upsert_job(Job(url=job.url, source="linkedin", saved=True, **detail))
+            if job.status == "scored":
+                # the old score was computed on a junk description — redo it
+                store.update(job.url, status="discovered", score=None)
+            fixed += 1
+            console.print(f"  [green]ok[/green] {detail['title'] or job.url}")
+        else:
+            console.print(f"  [yellow]still no description: {job.url} — run "
+                          f"'jobagent debug-job \"{job.url}\"' and send the "
+                          "screenshot to Claude[/yellow]")
+    return fixed
+
+
 def fetch_job(session: BrowserSession, url: str, console: Console) -> Job | None:
     """Fetch one job by URL using the public (logged-out) job page — no
     LinkedIn login required."""
@@ -250,16 +284,26 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
             session, page, SAVED_JOBS_URL, console):
         return 0
 
-    # Collect links from the main content region only, so sidebar widgets
-    # ("jobs you may be interested in", etc.) can't leak into the import.
-    scope = page.locator("main").first if page.locator("main").count() else page
+    # The saved list paginates (10 cards per page) — walk pages until one
+    # yields nothing new or we hit the limit.
     hrefs: list[str] = []
-    for a in scope.locator(SELECTORS["saved_job_link"]).all():
-        href = a.get_attribute("href") or ""
-        if "/jobs/view/" in href:
-            u = canonical_job_url(href)
-            if u not in hrefs:
-                hrefs.append(u)
+    start = 0
+    while len(hrefs) < limit:
+        if start:
+            _goto(session, page, f"{SAVED_JOBS_URL}&start={start}")
+        # Collect from the main content region only, so sidebar widgets
+        # ("jobs you may be interested in", etc.) can't leak into the import.
+        scope = page.locator("main").first if page.locator("main").count() else page
+        found_before = len(hrefs)
+        for a in scope.locator(SELECTORS["saved_job_link"]).all():
+            href = a.get_attribute("href") or ""
+            if "/jobs/view/" in href:
+                u = canonical_job_url(href)
+                if u not in hrefs:
+                    hrefs.append(u)
+        if len(hrefs) == found_before:
+            break
+        start += 10
     if not hrefs:
         console.print("[yellow]No saved jobs found on the page. If you do have "
                       "saved jobs on LinkedIn, the selectors may need updating "
