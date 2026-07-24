@@ -359,6 +359,16 @@ def tailor(
     console.print("\nNext: [cyan]jobagent apply[/cyan]")
 
 
+def _contact_from_answers(answers: dict) -> str:
+    """Build the resume contact line deterministically from answers.yaml, so
+    links (LinkedIn, GitHub, TryHackMe, ...) can never be dropped by the AI."""
+    contact = answers.get("contact") or {}
+    parts = [contact.get("city"), contact.get("phone"), contact.get("email"),
+             contact.get("linkedin"), contact.get("github"),
+             contact.get("tryhackme")]
+    return " · ".join(str(p).strip() for p in parts if p and str(p).strip())
+
+
 def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
     """Tailor each job; returns the URLs successfully tailored."""
     import re as _re
@@ -367,15 +377,27 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
     from .docgen import (convert_to_pdf, slugify, write_cover_letter_docx,
                          write_resume_docx)
 
+    answers = _answers(cfg)
+    contact_line = _contact_from_answers(answers)
+    full_name = (answers.get("contact") or {}).get("full_name", "")
+
     done: list[str] = []
     for job in jobs:
         console.print(f"Tailoring for [bold]{job.title}[/bold] at {job.company} ...")
         try:
             package = tailor_for_job(ai, resume_text, job,
-                                     extra_instructions=cfg.tailoring.instructions)
+                                     extra_instructions=cfg.tailoring.instructions,
+                                     include_summary=cfg.tailoring.include_summary)
         except Exception as exc:
             console.print(f"[red]tailoring failed: {exc}[/red]")
             continue
+        # Contact info comes from answers.yaml verbatim — never from the AI.
+        if contact_line:
+            package.resume.contact = contact_line
+        if full_name:
+            package.resume.name = full_name
+        if not cfg.tailoring.include_summary:
+            package.resume.summary = ""
         # include the job id so folders are unique even if title/company are
         # missing — otherwise jobs overwrite each other's documents
         job_id = (_re.sub(r"\D", "", job.url)[-8:]) or "0"
