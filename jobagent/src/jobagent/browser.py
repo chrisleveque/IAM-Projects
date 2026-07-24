@@ -46,7 +46,19 @@ class BrowserSession:
         launch_kwargs = dict(
             headless=False,
             viewport={"width": 1440, "height": 900},
-            args=["--disable-blink-features=AutomationControlled"],
+            # Playwright disables the Chrome sandbox by default, which puts
+            # Chrome in a degraded automation mode (visible "--no-sandbox"
+            # warning banner). Run with the sandbox on, like normal Chrome.
+            chromium_sandbox=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                # Chrome 127+ encrypts cookies with "app-bound encryption",
+                # which does not survive automation-launched sessions on
+                # Windows — cookies written in one run can't be decrypted in
+                # the next, presenting as a logout after every restart. Use
+                # the legacy per-user encryption so sessions persist.
+                "--disable-features=AppBoundEncryption",
+            ],
         )
         # The engine is PINNED per profile: Chrome and Chromium encrypt the
         # cookie store differently, so a silent switch between runs makes all
