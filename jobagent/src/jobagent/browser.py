@@ -33,14 +33,29 @@ def pin_engine(profile_dir: Path, engine: str) -> None:
     (profile_dir / ENGINE_MARKER).write_text(engine, encoding="utf-8")
 
 
+def profile_dir_for(cfg: AppConfig, site: str) -> Path:
+    """Each site gets its own browser profile (browser_profile-linkedin, ...).
+
+    LinkedIn and Indeed have opposite needs: LinkedIn sessions persist
+    reliably under bundled Chromium's cookie store but not real Chrome's,
+    while Indeed's Cloudflare check passes real Chrome but blocks Chromium.
+    Site-specific profiles let each run on its proven engine.
+    """
+    base = cfg.resolve(cfg.paths.browser_profile)
+    if site in ("", "default"):
+        return base
+    return base.parent / f"{base.name}-{site}"
+
+
 class BrowserSession:
-    def __init__(self, cfg: AppConfig):
+    def __init__(self, cfg: AppConfig, site: str = "default"):
         self.cfg = cfg
+        self.site = site
         self._pw = None
         self.context: BrowserContext | None = None
 
     def __enter__(self) -> "BrowserSession":
-        profile_dir = self.cfg.resolve(self.cfg.paths.browser_profile)
+        profile_dir = profile_dir_for(self.cfg, self.site)
         profile_dir.mkdir(parents=True, exist_ok=True)
         self._pw = sync_playwright().start()
         launch_kwargs = dict(
@@ -66,6 +81,12 @@ class BrowserSession:
         # out. Whichever engine creates the profile is the only one allowed to
         # open it.
         pinned = read_pinned_engine(profile_dir)
+        if self.site == "linkedin":
+            # LinkedIn sessions persist reliably only under bundled Chromium's
+            # cookie store (empirically: they survived for days on Chromium
+            # and died between runs on real Chrome). Cloudflare isn't a factor
+            # on LinkedIn, so Chromium is strictly better here.
+            pinned = "chromium"
         if pinned == "chrome":
             try:
                 self.context = self._pw.chromium.launch_persistent_context(
@@ -86,6 +107,8 @@ class BrowserSession:
                 str(profile_dir), **launch_kwargs
             )
             self.engine = "chromium"
+            if read_pinned_engine(profile_dir) != "chromium":
+                pin_engine(profile_dir, "chromium")
         else:
             # Fresh profile: prefer the user's real Google Chrome (bot
             # protection trusts it far more than bundled Chromium), then pin.
@@ -100,7 +123,8 @@ class BrowserSession:
                 )
                 self.engine = "chromium"
             pin_engine(profile_dir, self.engine)
-        Console().print(f"[dim]browser engine: {self.engine} (pinned to this profile)[/dim]")
+        Console().print(f"[dim]browser engine: {self.engine} "
+                        f"(profile: {profile_dir.name})[/dim]")
         self.context.set_default_timeout(15_000)
         return self
 

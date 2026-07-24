@@ -1,6 +1,6 @@
 # Secrets and per-user state — never commit these
 .env
-browser_profile/
+browser_profile*/
 output/
 *.db
 

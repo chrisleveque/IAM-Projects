@@ -83,7 +83,7 @@ def login(
                            password=True).strip()
         if not value:
             raise typer.Exit(code=_fail("no cookie value provided"))
-        with BrowserSession(cfg) as session:
+        with BrowserSession(cfg, site="linkedin") as session:
             session.context.add_cookies([{
                 "name": "li_at", "value": value,
                 "domain": ".linkedin.com", "path": "/",
@@ -107,29 +107,27 @@ def login(
                        default="")
         return
 
-    with BrowserSession(cfg) as session:
-        page = session.page
-        page.goto("https://www.linkedin.com/login")
-        console.print("Log in to [bold]LinkedIn[/bold] in the browser window "
-                      "(2FA/captcha included).")
-        Prompt.ask("Press Enter here when LinkedIn is logged in", default="")
-        # Open Indeed in a fresh tab: right after login the LinkedIn tab is often
-        # still mid-redirect, and a goto() on it dies with "interrupted by
-        # another navigation".
-        indeed_page = session.new_page()
+    console.print("For LinkedIn, prefer [cyan]jobagent login --linkedin-cookie[/cyan] "
+                  "(LinkedIn blocks password sign-in in automated browsers).")
+    with BrowserSession(cfg, site="linkedin") as session:
+        session.page.goto("https://www.linkedin.com/login")
+        console.print("Log in to [bold]LinkedIn[/bold] in the browser window, "
+                      "or close this step with Enter if you use the cookie import.")
+        Prompt.ask("Press Enter here when done with LinkedIn", default="")
+    with BrowserSession(cfg, site="indeed") as session:
         for attempt in range(3):
             try:
-                indeed_page.goto("https://secure.indeed.com/auth",
-                                 wait_until="domcontentloaded")
+                session.page.goto("https://secure.indeed.com/auth",
+                                  wait_until="domcontentloaded")
                 break
             except Exception:
                 if attempt == 2:
                     raise
-                indeed_page.wait_for_timeout(2000)
+                session.page.wait_for_timeout(2000)
         console.print("Now log in to [bold]Indeed[/bold] (tip: enter your email "
                       "and choose the sign-in code option — no password needed).")
         Prompt.ask("Press Enter here when Indeed is logged in", default="")
-    console.print("[green]Sessions saved to the local browser profile. "
+    console.print("[green]Sessions saved to the local browser profiles. "
                   "You won't need to log in again unless they expire.[/green]")
 
 
@@ -157,15 +155,20 @@ def scan(
         raise typer.Exit(code=_fail("no searches configured in config.yaml"))
 
     total_new = 0
-    with BrowserSession(cfg) as session:
-        for spec in searches:
-            scraper = {"linkedin": linkedin_scraper, "indeed": indeed_scraper}.get(spec.source)
-            if scraper is None:
-                console.print(f"[yellow]unknown source '{spec.source}' — skipping[/yellow]")
-                continue
-            total_new += scraper.scan(session, store, spec, console)
-            session.job_pause()
-        if saved and (source in (None, "linkedin")):
+    by_source: dict[str, list] = {}
+    for spec in searches:
+        by_source.setdefault(spec.source, []).append(spec)
+    for src, specs in by_source.items():
+        scraper = {"linkedin": linkedin_scraper, "indeed": indeed_scraper}.get(src)
+        if scraper is None:
+            console.print(f"[yellow]unknown source '{src}' — skipping[/yellow]")
+            continue
+        with BrowserSession(cfg, site=src) as session:
+            for spec in specs:
+                total_new += scraper.scan(session, store, spec, console)
+                session.job_pause()
+    if saved and (source in (None, "linkedin")):
+        with BrowserSession(cfg, site="linkedin") as session:
             total_new += linkedin_scraper.scan_saved(session, store, console)
     console.print(f"\n[bold]{total_new} new job(s) discovered.[/bold] "
                   "Next: [cyan]jobagent score[/cyan]")
@@ -187,25 +190,30 @@ def add(
 
     cfg = _cfg()
     store = _store(cfg)
+    groups = {
+        "linkedin": [u for u in urls if "linkedin.com" in u],
+        "indeed": [u for u in urls if "indeed.com" in u],
+    }
+    for url in urls:
+        if "linkedin.com" not in url and "indeed.com" not in url:
+            console.print(f"[yellow]skipping unrecognized URL: {url}[/yellow]")
     added = 0
-    with BrowserSession(cfg) as session:
-        for url in urls:
-            if "linkedin.com" in url:
-                job = linkedin_scraper.fetch_job(session, url, console)
-            elif "indeed.com" in url:
-                job = indeed_scraper.fetch_job(session, url, console)
-            else:
-                console.print(f"[yellow]skipping unrecognized URL: {url}[/yellow]")
-                continue
-            if job is None:
-                continue
-            is_new = store.upsert_job(job)
-            note = "" if job.description else (
-                "  [yellow](no description captured — jobagent score will skip "
-                "it; tell Claude if the posting is public)[/yellow]")
-            console.print(f"  [green]{'+' if is_new else '~'}[/green] "
-                          f"{job.title or job.url} — {job.company}{note}")
-            added += 1
+    for src, src_urls in groups.items():
+        if not src_urls:
+            continue
+        fetch = (linkedin_scraper if src == "linkedin" else indeed_scraper).fetch_job
+        with BrowserSession(cfg, site=src) as session:
+            for url in src_urls:
+                job = fetch(session, url, console)
+                if job is None:
+                    continue
+                is_new = store.upsert_job(job)
+                note = "" if job.description else (
+                    "  [yellow](no description captured — jobagent score will "
+                    "skip it; tell Claude if the posting is public)[/yellow]")
+                console.print(f"  [green]{'+' if is_new else '~'}[/green] "
+                              f"{job.title or job.url} — {job.company}{note}")
+                added += 1
     console.print(f"\n[bold]{added} job(s) added[/bold] (tagged saved ★). "
                   "Next: [cyan]jobagent score[/cyan]")
 
@@ -354,37 +362,43 @@ def apply_cmd(
     applied_today = store.count_applied_today()
     cap = cfg.limits.max_applications_per_day
 
-    with BrowserSession(cfg) as session:
-        for job in jobs:
-            if applied_today >= cap:
-                console.print(f"[yellow]Daily cap reached ({cap}). "
-                              "Run again tomorrow or raise limits.max_applications_per_day.[/yellow]")
-                break
-            resume_file = Path(job.resume_path) if job.resume_path else None
-            if resume_file is not None and not resume_file.exists():
-                resume_file = None
-            ctx = FormContext(answers, resume_file, console, ai=ai,
-                              master_resume=master, answers_path=cfg.answers_path)
-            flow = linkedin_easy_apply if job.source == "linkedin" else indeed_apply
-            console.print(f"\n[bold]Applying:[/bold] {job.title} at {job.company} ({job.source})")
-            try:
-                outcome = flow.apply_to_job(session, job, ctx, console)
-            except Exception as exc:
-                console.print(f"[red]apply flow failed: {exc}[/red]")
-                outcome = "failed"
-            if outcome == "applied":
-                store.update(job.url, status="applied")
-                applied_today += 1
-                console.print("[green]Marked applied.[/green]")
-            elif outcome == "skipped":
-                store.update(job.url, status="skipped")
-            elif outcome == "manual":
-                console.print(Panel(
-                    f"No in-platform apply for this job (external ATS).\n"
-                    f"Your tailored docs: {job.resume_path}\nApply here: {job.url}\n"
-                    "It stays in the tracker as 'tailored'.",
-                    title="Manual apply needed"))
-            session.job_pause()
+    for src in ("linkedin", "indeed"):
+        src_jobs = [j for j in jobs if j.source == src]
+        if not src_jobs or applied_today >= cap:
+            continue
+        with BrowserSession(cfg, site=src) as session:
+            for job in src_jobs:
+                if applied_today >= cap:
+                    console.print(f"[yellow]Daily cap reached ({cap}). "
+                                  "Run again tomorrow or raise "
+                                  "limits.max_applications_per_day.[/yellow]")
+                    break
+                resume_file = Path(job.resume_path) if job.resume_path else None
+                if resume_file is not None and not resume_file.exists():
+                    resume_file = None
+                ctx = FormContext(answers, resume_file, console, ai=ai,
+                                  master_resume=master, answers_path=cfg.answers_path)
+                flow = linkedin_easy_apply if job.source == "linkedin" else indeed_apply
+                console.print(f"\n[bold]Applying:[/bold] {job.title} at "
+                              f"{job.company} ({job.source})")
+                try:
+                    outcome = flow.apply_to_job(session, job, ctx, console)
+                except Exception as exc:
+                    console.print(f"[red]apply flow failed: {exc}[/red]")
+                    outcome = "failed"
+                if outcome == "applied":
+                    store.update(job.url, status="applied")
+                    applied_today += 1
+                    console.print("[green]Marked applied.[/green]")
+                elif outcome == "skipped":
+                    store.update(job.url, status="skipped")
+                elif outcome == "manual":
+                    console.print(Panel(
+                        f"No in-platform apply for this job (external ATS).\n"
+                        f"Your tailored docs: {job.resume_path}\nApply here: {job.url}\n"
+                        "It stays in the tracker as 'tailored'.",
+                        title="Manual apply needed"))
+                session.job_pause()
     console.print(f"\nApplied today: {store.count_applied_today()}/{cap}")
 
 
