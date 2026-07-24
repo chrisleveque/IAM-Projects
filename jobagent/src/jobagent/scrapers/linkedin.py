@@ -8,6 +8,7 @@ in order by Playwright.
 
 from __future__ import annotations
 
+import re
 from urllib.parse import quote_plus, urlsplit
 
 from rich.console import Console
@@ -42,7 +43,10 @@ SELECTORS = {
                        "#job-details, [class*='jobs-description']",
     "see_more": "button.jobs-description__footer-button, "
                 "button.show-more-less-html__button, button:has-text('See more')",
-    "easy_apply_button": "button.jobs-apply-button",
+    "easy_apply_button": "button.jobs-apply-button, "
+                         "div.jobs-apply-button--top-card button, "
+                         "button[aria-label*='Easy Apply' i], "
+                         "button:has-text('Easy Apply')",
     "saved_job_link": "a[href*='/jobs/view/']",
 }
 
@@ -121,9 +125,33 @@ def _login_and_retry(session: BrowserSession, page, url: str,
 def _detect_easy_apply(page) -> bool:
     try:
         btn = page.locator(SELECTORS["easy_apply_button"]).first
-        return btn.count() > 0 and "easy apply" in btn.inner_text(timeout=3000).lower()
+        if btn.count() == 0:
+            return False
+        label = (btn.inner_text(timeout=3000) or "") + " " + \
+            (btn.get_attribute("aria-label") or "")
+        return "easy apply" in label.lower()
     except Exception:
         return False
+
+
+def parse_page_title(raw: str) -> tuple[str, str]:
+    """Derive (job title, company) from the document title — far more stable
+    than LinkedIn's CSS classes.
+
+    Logged-in: "(2) Senior IAM Engineer | Globex | LinkedIn"
+    Guest:     "Globex hiring Senior IAM Engineer in Austin, TX | LinkedIn"
+    """
+    text = re.sub(r"^\(\d+\)\s*", "", raw or "").strip()
+    text = re.sub(r"\|\s*LinkedIn\s*$", "", text).strip(" |")
+    if not text:
+        return "", ""
+    if " hiring " in text:
+        company, _, rest = text.partition(" hiring ")
+        return rest.split(" in ")[0].strip(), company.strip()
+    parts = [p.strip() for p in text.split("|") if p.strip()]
+    title = parts[0] if parts else ""
+    company = parts[1] if len(parts) > 1 else ""
+    return title, company
 
 
 def _dismiss_guest_modal(page) -> None:
@@ -144,7 +172,8 @@ def backfill_descriptions(session: BrowserSession, store: Store,
     junk-short. The saved-list page paginates, so a scan doesn't necessarily
     revisit every previously imported job."""
     jobs = [j for j in store.list_jobs(source="linkedin", saved=True)
-            if len(j.description) < 200 and j.status in ("discovered", "scored")]
+            if (len(j.description) < 200 or not j.title.strip())
+            and j.status in ("discovered", "scored", "tailored", "queued")]
     if not jobs:
         return 0
     console.print(f"[bold]LinkedIn:[/bold] refreshing {len(jobs)} job(s) with "
@@ -271,6 +300,14 @@ def _read_job_view(session: BrowserSession, page) -> dict:
                 detail["description"] = main_text[:15000]
         except Exception:
             pass
+    if not detail["title"] or not detail["company"]:
+        # CSS classes churn, but the document title reliably carries both.
+        try:
+            title, company = parse_page_title(page.title())
+        except Exception:
+            title, company = "", ""
+        detail["title"] = detail["title"] or title
+        detail["company"] = detail["company"] or company
     return detail
 
 

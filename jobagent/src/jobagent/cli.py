@@ -361,6 +361,8 @@ def tailor(
 
 def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
     """Tailor each job; returns the URLs successfully tailored."""
+    import re as _re
+
     from .ai.tailor import tailor_for_job
     from .docgen import (convert_to_pdf, slugify, write_cover_letter_docx,
                          write_resume_docx)
@@ -374,7 +376,12 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
         except Exception as exc:
             console.print(f"[red]tailoring failed: {exc}[/red]")
             continue
-        job_dir = cfg.output_dir / f"{slugify(job.company or job.source)}-{slugify(job.title)}"
+        # include the job id so folders are unique even if title/company are
+        # missing — otherwise jobs overwrite each other's documents
+        job_id = (_re.sub(r"\D", "", job.url)[-8:]) or "0"
+        job_dir = cfg.output_dir / (
+            f"{slugify(job.company or job.source)}-"
+            f"{slugify(job.title or 'job')}-{job_id}")
         resume_docx = write_resume_docx(package.resume, job_dir / "resume.docx")
         cover_docx = write_cover_letter_docx(
             package.cover_letter, package.resume.name, job_dir / "cover_letter.docx")

@@ -16,7 +16,10 @@ from ..store import Job
 from .formfill import FormContext, fill_scope
 
 SELECTORS = {
-    "easy_apply_button": "button.jobs-apply-button, button:has-text('Easy Apply')",
+    "easy_apply_button": "button.jobs-apply-button, "
+                         "div.jobs-apply-button--top-card button, "
+                         "button[aria-label*='Easy Apply' i], "
+                         "button:has-text('Easy Apply')",
     "modal": "div.jobs-easy-apply-modal, div[data-test-modal], div[role='dialog']",
     "next": "button[aria-label='Continue to next step'], "
             "button[aria-label='Review your application'], "
@@ -40,7 +43,11 @@ def apply_to_job(session: BrowserSession, job: Job, ctx: FormContext,
 
     button = page.locator(SELECTORS["easy_apply_button"]).first
     try:
-        if button.count() == 0 or "easy apply" not in button.inner_text(timeout=5000).lower():
+        if button.count() == 0:
+            return "manual"
+        label = (button.inner_text(timeout=5000) or "") + " " + \
+            (button.get_attribute("aria-label") or "")
+        if "easy apply" not in label.lower():
             return "manual"
         button.click()
         session.pause()
