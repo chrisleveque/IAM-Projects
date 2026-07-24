@@ -545,6 +545,19 @@ def go(
     console.print(f"\nApplied today: {store.count_applied_today()}/{cap}")
 
 
+@app.command()
+def requeue():
+    """Move all 'tailored' jobs back to 'queued' so the next run regenerates
+    their documents and re-attempts applying."""
+    cfg = _cfg()
+    store = _store(cfg)
+    jobs = store.list_jobs(status="tailored")
+    for job in jobs:
+        store.update(job.url, status="queued")
+    console.print(f"[green]{len(jobs)} job(s) re-queued[/green] — they'll be "
+                  "re-tailored and applied on the next run.")
+
+
 @app.command(name="debug-job")
 def debug_job(url: str = typer.Argument(..., help="A LinkedIn job URL that scrapes badly")):
     """Diagnose scraping on one job page: saves a screenshot + HTML and reports
