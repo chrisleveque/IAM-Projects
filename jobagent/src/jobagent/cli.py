@@ -546,6 +546,59 @@ def go(
 
 
 @app.command()
+def manual():
+    """Walk through tailored external-ATS jobs one at a time.
+
+    Opens each posting in your NORMAL default browser (where you're already
+    logged in everywhere) and its tailored-docs folder in Explorer, then
+    records the result in the tracker.
+    """
+    import os
+    import subprocess
+    import webbrowser
+
+    cfg = _cfg()
+    store = _store(cfg)
+    jobs = store.list_jobs(status="tailored")
+    if not jobs:
+        console.print("No tailored jobs waiting for a manual apply. "
+                      "Run [cyan]jobagent go[/cyan] or [cyan]jobagent tailor[/cyan] first.")
+        return
+    console.print(f"[bold]{len(jobs)} job(s) ready for manual apply.[/bold] "
+                  "For each: the posting opens in your normal browser and the "
+                  "docs folder opens in Explorer — upload, submit, come back.\n")
+    for job in jobs:
+        docs_dir = Path(job.resume_path).parent if job.resume_path else None
+        console.print(Panel(
+            f"[bold]{job.title}[/bold] at {job.company}   (score: {job.score})\n"
+            f"docs: {docs_dir}\n{job.url}"))
+        while True:
+            choice = Prompt.ask(
+                "(o)pen posting + docs / (a)pplied / (s)kip job / (n)ext / (q)uit",
+                default="o").strip().lower()
+            if choice != "o":
+                break
+            webbrowser.open(job.url)
+            if docs_dir and docs_dir.exists():
+                if hasattr(os, "startfile"):
+                    os.startfile(str(docs_dir))  # Windows Explorer
+                else:
+                    opener = "open" if os.uname().sysname == "Darwin" else "xdg-open"
+                    subprocess.Popen([opener, str(docs_dir)])
+        if choice == "a":
+            store.update(job.url, status="applied")
+            console.print("[green]marked applied[/green]\n")
+        elif choice == "s":
+            store.update(job.url, status="skipped")
+            console.print("skipped\n")
+        elif choice == "q":
+            break
+    counts = store.status_counts()
+    console.print(f"\napplied: {counts.get('applied', 0)}  still tailored: "
+                  f"{counts.get('tailored', 0)}")
+
+
+@app.command()
 def requeue():
     """Move all 'tailored' jobs back to 'queued' so the next run regenerates
     their documents and re-attempts applying."""
