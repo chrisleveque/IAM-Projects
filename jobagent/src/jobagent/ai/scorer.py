@@ -15,7 +15,8 @@ a fit assessment as JSON only, no prose, matching exactly:
 
 Scoring guide: 80+ strong match (most requirements met), 60-79 decent match worth \
 applying, 40-59 stretch, below 40 poor fit. Be honest — an inflated score wastes \
-the candidate's daily application budget. Consider required skills, seniority, \
+the candidate's daily application budget. Keep reasons and concerns to at most \
+3 items each, a short phrase apiece. Consider required skills, seniority, \
 domain, and location/remote constraints mentioned in the posting."""
 
 
@@ -34,4 +35,4 @@ def score_job(ai, master_resume: str, job: Job) -> ScoreResult:
         f"MASTER RESUME:\n{master_resume}\n\n"
         f"JOB POSTING ({job.title} at {job.company}, {job.location}):\n{job.description}"
     )
-    return ai.parse(SYSTEM, user, ScoreResult, max_tokens=1024)
+    return ai.parse(SYSTEM, user, ScoreResult, max_tokens=2000)
