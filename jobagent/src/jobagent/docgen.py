@@ -19,6 +19,23 @@ from .ai.tailor import TailoredResume
 # tryhackme.com/p/me, https://example.io — but not phones or "City, ST".
 _URL_RE = re.compile(r"^(https?://)?(www\.)?[\w-]+(\.[\w-]+)+(/\S*)?$", re.I)
 
+# Known sites render as a clean labeled link ("LinkedIn") instead of the raw URL.
+_LINK_LABELS = (
+    ("linkedin.com", "LinkedIn"),
+    ("github.com", "GitHub"),
+    ("tryhackme.com", "TryHackMe"),
+    ("hackthebox.com", "HackTheBox"),
+    ("credly.com", "Credly"),
+)
+
+
+def _link_label(url: str) -> str:
+    low = url.lower()
+    for domain, label in _LINK_LABELS:
+        if domain in low:
+            return label
+    return url
+
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
     """python-docx has no high-level hyperlink API; build the XML directly."""
@@ -57,7 +74,7 @@ def _write_contact_line(doc: Document, contact: str) -> None:
             _add_hyperlink(para, segment, f"mailto:{segment}")
         elif _URL_RE.match(segment):
             url = segment if segment.lower().startswith("http") else f"https://{segment}"
-            _add_hyperlink(para, segment, url)
+            _add_hyperlink(para, _link_label(segment), url)
         else:
             para.add_run(segment)
 
