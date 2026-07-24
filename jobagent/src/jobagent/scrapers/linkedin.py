@@ -35,8 +35,13 @@ SELECTORS = {
                       ".jobs-unified-top-card__company-name, .topcard__org-name-link",
     "detail_location": ".job-details-jobs-unified-top-card__primary-description-container, "
                        ".jobs-unified-top-card__primary-description, .jobs-unified-top-card__bullet",
-    "description": "#job-details, .jobs-description__content, .jobs-box__html-content, "
-                   ".description__text",
+    "description": ".jobs-description__content, .jobs-box__html-content, "
+                   ".jobs-description-content__text, .description__text, #job-details",
+    "description_any": ".jobs-description__content, .jobs-box__html-content, "
+                       ".jobs-description-content__text, .description__text, "
+                       "#job-details, [class*='jobs-description']",
+    "see_more": "button.jobs-description__footer-button, "
+                "button.show-more-less-html__button, button:has-text('See more')",
     "easy_apply_button": "button.jobs-apply-button",
     "saved_job_link": "a[href*='/jobs/view/']",
 }
@@ -144,18 +149,7 @@ def fetch_job(session: BrowserSession, url: str, console: Console) -> Job | None
         console.print(f"[red]could not open {job_url}: {type(exc).__name__}[/red]")
         return None
     _dismiss_guest_modal(page)
-    detail = _read_detail_pane(page, title_selector="view_title")
-    if not detail["description"]:
-        # guest pages often collapse the description behind "Show more"
-        try:
-            more = page.locator("button.show-more-less-html__button, "
-                                "button:has-text('Show more')").first
-            if more.count() and more.is_visible():
-                more.click()
-                session.pause()
-                detail = _read_detail_pane(page, title_selector="view_title")
-        except Exception:
-            pass
+    detail = _read_job_view(session, page)
     return Job(url=job_url, source="linkedin", saved=True, **detail)
 
 
@@ -210,6 +204,42 @@ def scan(session: BrowserSession, store: Store, spec: SearchSpec, console: Conso
     return new_count
 
 
+def _read_job_view(session: BrowserSession, page) -> dict:
+    """Read a dedicated /jobs/view/ page, working around lazy-loading and
+    collapsed descriptions on both the logged-in and guest layouts."""
+    detail = _read_detail_pane(page, title_selector="view_title")
+    if len(detail["description"]) < 200:
+        try:
+            page.wait_for_selector(SELECTORS["description_any"], timeout=8000)
+        except Exception:
+            pass
+        try:  # the description module lazy-mounts on scroll in some layouts
+            page.mouse.wheel(0, 1400)
+            page.wait_for_timeout(1200)
+        except Exception:
+            pass
+        try:  # expand collapsed "See more" text
+            more = page.locator(SELECTORS["see_more"]).first
+            if more.count() and more.is_visible():
+                more.click()
+                session.pause()
+        except Exception:
+            pass
+        detail = _read_detail_pane(page, title_selector="view_title")
+    if len(detail["description"]) < 200:
+        # Last resort: the page's main text contains the posting body even
+        # when the targeted selectors miss — better a noisy description than
+        # none at all (scoring/tailoring read it as plain text anyway).
+        try:
+            main_text = " ".join(
+                page.locator("main").first.inner_text(timeout=4000).split())
+            if len(main_text) > 200:
+                detail["description"] = main_text[:15000]
+        except Exception:
+            pass
+    return detail
+
+
 def scan_saved(session: BrowserSession, store: Store, console: Console, limit: int = 50) -> int:
     """Import jobs you saved on LinkedIn while browsing."""
     page = session.page
@@ -239,7 +269,7 @@ def scan_saved(session: BrowserSession, store: Store, console: Console, limit: i
     for job_url in hrefs[:limit]:
         try:
             _goto(session, page, job_url)
-            detail = _read_detail_pane(page, title_selector="view_title")
+            detail = _read_job_view(session, page)
             if store.upsert_job(Job(url=job_url, source="linkedin", saved=True, **detail)):
                 new_count += 1
                 console.print(f"  [green]+[/green] {detail['title'] or job_url}")
