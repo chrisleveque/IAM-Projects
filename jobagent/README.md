@@ -100,6 +100,23 @@ certifications, metrics, or skills. It only reorders, selects, and rewords what
 is in `profile/master_resume.md`. Still — proofread `output/` before applying;
 you are the last reviewer.
 
+## Grab all saved-job links in one click (bookmarklet)
+
+If you prefer never dealing with LinkedIn logins in the agent browser: in your
+normal browser, create a bookmark whose URL is the single line below. On
+[linkedin.com/my-items/saved-jobs](https://www.linkedin.com/my-items/saved-jobs/),
+click the bookmark — it copies every job link on the page to your clipboard.
+
+```
+javascript:(function(){var u=[...new Set([...document.querySelectorAll("a[href*='/jobs/view/']")].map(function(a){return a.href.split('?')[0]}))].join('\n');navigator.clipboard.writeText(u).then(function(){alert('Copied '+u.split('\n').length+' job links')},function(){prompt('Press Ctrl+C to copy:',u)})})();
+```
+
+Then import them all in one go:
+
+```bash
+jobagent add --paste     # paste, then press Enter on an empty line
+```
+
 ## When LinkedIn won't let you sign in
 
 If LinkedIn's sign-in page loops or the URL shows
