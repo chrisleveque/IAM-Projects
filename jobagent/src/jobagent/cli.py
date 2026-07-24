@@ -258,20 +258,11 @@ def add(
                   "Next: [cyan]jobagent score[/cyan]")
 
 
-@app.command()
-def score():
-    """Score all unscored jobs against your master resume (uses the Claude API)."""
+def _score_pending(store, ai, resume: str, threshold: int) -> int:
     from .ai.scorer import score_job
 
-    cfg = _cfg()
-    store = _store(cfg)
-    resume = _master_resume(cfg)
-    jobs = store.list_jobs(status="discovered")
-    if not jobs:
-        console.print("Nothing to score. Run [cyan]jobagent scan[/cyan] first.")
-        return
-    ai = _ai(cfg)
-    for job in jobs:
+    scored = 0
+    for job in store.list_jobs(status="discovered"):
         if not job.description:
             console.print(f"[yellow]no description for {job.url} — skipping[/yellow]")
             continue
@@ -282,8 +273,22 @@ def score():
             continue
         store.update(job.url, status="scored", score=result.score,
                      score_reasons=result.summary())
-        color = "green" if result.score >= cfg.scoring.min_score_to_tailor else "dim"
+        color = "green" if result.score >= threshold else "dim"
         console.print(f"[{color}]{result.score:>3}[/{color}]  {job.title} — {job.company}")
+        scored += 1
+    return scored
+
+
+@app.command()
+def score():
+    """Score all unscored jobs against your master resume (uses the Claude API)."""
+    cfg = _cfg()
+    store = _store(cfg)
+    resume = _master_resume(cfg)
+    if not store.list_jobs(status="discovered"):
+        console.print("Nothing to score. Run [cyan]jobagent scan[/cyan] first.")
+        return
+    _score_pending(store, _ai(cfg), resume, cfg.scoring.min_score_to_tailor)
     console.print(f"\nDone. Next: [cyan]jobagent review[/cyan] (optional) or "
                   f"[cyan]jobagent tailor[/cyan]")
 
@@ -349,7 +354,17 @@ def tailor(
                       "[cyan]jobagent review[/cyan].")
         return
 
-    ai = _ai(cfg)
+    _tailor_batch(cfg, store, _ai(cfg), resume_text, jobs)
+    console.print("\nNext: [cyan]jobagent apply[/cyan]")
+
+
+def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
+    """Tailor each job; returns the URLs successfully tailored."""
+    from .ai.tailor import tailor_for_job
+    from .docgen import (convert_to_pdf, slugify, write_cover_letter_docx,
+                         write_resume_docx)
+
+    done: list[str] = []
     for job in jobs:
         console.print(f"Tailoring for [bold]{job.title}[/bold] at {job.company} ...")
         try:
@@ -370,7 +385,8 @@ def tailor(
         console.print(f"  [green]->[/green] {job_dir}"
                       + ("" if resume_pdf else "  [yellow](no PDF — LibreOffice not "
                          "installed, docx only)[/yellow]"))
-    console.print("\nNext: [cyan]jobagent apply[/cyan]")
+        done.append(job.url)
+    return done
 
 
 @app.command(name="apply")
@@ -407,38 +423,116 @@ def apply_cmd(
         if not src_jobs or applied_today >= cap:
             continue
         with BrowserSession(cfg, site=src) as session:
-            for job in src_jobs:
-                if applied_today >= cap:
-                    console.print(f"[yellow]Daily cap reached ({cap}). "
-                                  "Run again tomorrow or raise "
-                                  "limits.max_applications_per_day.[/yellow]")
-                    break
-                resume_file = Path(job.resume_path) if job.resume_path else None
-                if resume_file is not None and not resume_file.exists():
-                    resume_file = None
-                ctx = FormContext(answers, resume_file, console, ai=ai,
-                                  master_resume=master, answers_path=cfg.answers_path)
-                flow = linkedin_easy_apply if job.source == "linkedin" else indeed_apply
-                console.print(f"\n[bold]Applying:[/bold] {job.title} at "
-                              f"{job.company} ({job.source})")
-                try:
-                    outcome = flow.apply_to_job(session, job, ctx, console)
-                except Exception as exc:
-                    console.print(f"[red]apply flow failed: {exc}[/red]")
-                    outcome = "failed"
-                if outcome == "applied":
-                    store.update(job.url, status="applied")
-                    applied_today += 1
-                    console.print("[green]Marked applied.[/green]")
-                elif outcome == "skipped":
-                    store.update(job.url, status="skipped")
-                elif outcome == "manual":
-                    console.print(Panel(
-                        f"No in-platform apply for this job (external ATS).\n"
-                        f"Your tailored docs: {job.resume_path}\nApply here: {job.url}\n"
-                        "It stays in the tracker as 'tailored'.",
-                        title="Manual apply needed"))
-                session.job_pause()
+            applied_today = _apply_in_session(
+                session, src_jobs, store, cfg, ai, master, answers,
+                applied_today, cap)
+    console.print(f"\nApplied today: {store.count_applied_today()}/{cap}")
+
+
+def _apply_in_session(session, src_jobs, store, cfg, ai, master, answers,
+                      applied_today: int, cap: int) -> int:
+    """Apply to jobs inside an already-open browser session; returns the
+    updated applied-today count."""
+    from .apply import indeed_apply, linkedin_easy_apply
+    from .apply.formfill import FormContext
+
+    for job in src_jobs:
+        if applied_today >= cap:
+            console.print(f"[yellow]Daily cap reached ({cap}). "
+                          "Run again tomorrow or raise "
+                          "limits.max_applications_per_day.[/yellow]")
+            break
+        resume_file = Path(job.resume_path) if job.resume_path else None
+        if resume_file is not None and not resume_file.exists():
+            resume_file = None
+        ctx = FormContext(answers, resume_file, console, ai=ai,
+                          master_resume=master, answers_path=cfg.answers_path)
+        flow = linkedin_easy_apply if job.source == "linkedin" else indeed_apply
+        console.print(f"\n[bold]Applying:[/bold] {job.title} at "
+                      f"{job.company} ({job.source})")
+        try:
+            outcome = flow.apply_to_job(session, job, ctx, console)
+        except Exception as exc:
+            console.print(f"[red]apply flow failed: {exc}[/red]")
+            outcome = "failed"
+        if outcome == "applied":
+            store.update(job.url, status="applied")
+            applied_today += 1
+            console.print("[green]Marked applied.[/green]")
+        elif outcome == "skipped":
+            store.update(job.url, status="skipped")
+        elif outcome == "manual":
+            console.print(Panel(
+                f"No in-platform apply for this job (external ATS).\n"
+                f"Your tailored docs: {job.resume_path}\nApply here: {job.url}\n"
+                "It stays in the tracker as 'tailored'.",
+                title="Manual apply needed"))
+        session.job_pause()
+    return applied_today
+
+
+@app.command()
+def go(
+    cookie_file: Optional[str] = typer.Option(
+        None, "--cookie-file",
+        help="Import a full LinkedIn cookie export (Cookie-Editor JSON) into "
+             "the session before starting"),
+    min_score: Optional[int] = typer.Option(
+        None, help="Override scoring.min_score_to_tailor"),
+):
+    """The whole LinkedIn saved-jobs pipeline in ONE browser session.
+
+    Optionally imports your cookies, then scans saved jobs, scores, tailors,
+    and applies — the browser never closes between steps, so the session
+    can't be lost to a restart. Indeed jobs are handled by scan/apply.
+    """
+    from .browser import BrowserSession
+    from .scrapers import linkedin as linkedin_scraper
+
+    cfg = _cfg()
+    store = _store(cfg)
+    resume_text = _master_resume(cfg)  # fail fast before any browser opens
+    ai = _ai(cfg)
+    answers = _answers(cfg)
+    threshold = cfg.scoring.min_score_to_tailor if min_score is None else min_score
+    cap = cfg.limits.max_applications_per_day
+    applied_today = store.count_applied_today()
+
+    with BrowserSession(cfg, site="linkedin") as session:
+        if cookie_file:
+            from .cookies import parse_cookie_export
+            try:
+                cookies = parse_cookie_export(
+                    Path(cookie_file).read_text(encoding="utf-8"))
+            except Exception as exc:
+                raise typer.Exit(code=_fail(f"could not parse {cookie_file}: {exc}"))
+            if not cookies:
+                raise typer.Exit(code=_fail(
+                    "no linkedin.com cookies found in that file"))
+            session.context.add_cookies(cookies)
+            console.print(f"[green]{len(cookies)} LinkedIn cookie(s) imported "
+                          "into this live session.[/green]")
+
+        console.print("\n[bold]Step 1/4 — importing your saved jobs[/bold]")
+        linkedin_scraper.scan_saved(session, store, console)
+
+        console.print("\n[bold]Step 2/4 — scoring[/bold] (browser stays open)")
+        _score_pending(store, ai, resume_text, threshold)
+
+        console.print("\n[bold]Step 3/4 — tailoring[/bold] (browser stays open)")
+        jobs = store.list_jobs(status="queued", saved=True, source="linkedin") + \
+            store.list_jobs(status="scored", min_score=threshold, saved=True,
+                            source="linkedin")
+        tailored_urls = _tailor_batch(cfg, store, ai, resume_text, jobs)
+
+        console.print("\n[bold]Step 4/4 — applying[/bold] (same browser, same session)")
+        ready = [j for j in (store.get_job(u) for u in tailored_urls) if j is not None]
+        if not ready:
+            console.print("Nothing new to apply to this run.")
+        else:
+            applied_today = _apply_in_session(
+                session, ready, store, cfg, ai, resume_text, answers,
+                applied_today, cap)
     console.print(f"\nApplied today: {store.count_applied_today()}/{cap}")
 
 
