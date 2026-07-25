@@ -374,8 +374,8 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
     import re as _re
 
     from .ai.tailor import tailor_for_job
-    from .docgen import (convert_to_pdf, slugify, write_cover_letter_docx,
-                         write_resume_docx)
+    from .docgen import (convert_to_pdf, count_pdf_pages, slugify,
+                         write_cover_letter_docx, write_resume_docx)
 
     answers = _answers(cfg)
     contact_line = _contact_from_answers(answers)
@@ -411,6 +411,16 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
             package.cover_letter, package.resume.name,
             job_dir / "cover_letter.docx", contact=contact_dict)
         resume_pdf = convert_to_pdf(resume_docx)
+        # Auto-fit: if the rendered PDF spills past 2 pages, rebuild the
+        # docx with progressively tighter spacing until it fits.
+        for level in (1, 2):
+            if resume_pdf is None or count_pdf_pages(resume_pdf) <= 2:
+                break
+            console.print(f"  [dim]over 2 pages — compacting (level {level})[/dim]")
+            resume_docx = write_resume_docx(
+                package.resume, job_dir / "resume.docx",
+                contact=contact_dict, compact=level)
+            resume_pdf = convert_to_pdf(resume_docx)
         convert_to_pdf(cover_docx)
         store.update(job.url, status="tailored",
                      resume_path=str(resume_pdf or resume_docx),

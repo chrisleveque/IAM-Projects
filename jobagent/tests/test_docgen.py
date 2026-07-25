@@ -138,3 +138,31 @@ def test_write_cover_letter_docx(tmp_path):
 def test_slugify():
     assert slugify("Sr. IAM Engineer @ Acme, Inc.") == "sr-iam-engineer-acme-inc"
     assert slugify("///") == "job"
+
+
+def test_compact_levels_tighten_layout(tmp_path):
+    from docx.shared import Inches, Pt
+
+    loose = Document(str(write_resume_docx(
+        sample_resume(), tmp_path / "loose.docx", contact=sample_contact())))
+    tight = Document(str(write_resume_docx(
+        sample_resume(), tmp_path / "tight.docx", contact=sample_contact(),
+        compact=2)))
+    assert tight.styles["Normal"].font.size == Pt(9.5)
+    assert loose.styles["Normal"].font.size == Pt(10)
+    assert tight.sections[0].left_margin == Inches(0.6)
+    assert loose.sections[0].left_margin == Inches(0.7)
+
+
+def test_table_borders_declared_none_before_layout(tmp_path):
+    import re as _re
+    import zipfile
+
+    path = write_resume_docx(sample_resume(), tmp_path / "resume.docx",
+                             contact=sample_contact())
+    xml = zipfile.ZipFile(str(path)).read("word/document.xml").decode()
+    tblpr = _re.search(r"<w:tblPr>.*?</w:tblPr>", xml, _re.S).group(0)
+    # every border explicitly none, positioned before tblLayout so strict
+    # parsers (Windows LibreOffice) honor it
+    assert tblpr.count('w:val="none"') == 6
+    assert tblpr.index("tblBorders") < tblpr.index("tblLayout")
