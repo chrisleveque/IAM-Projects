@@ -138,9 +138,25 @@ def write_cover_letter_docx(text: str, name: str, path: Path) -> Path:
     return path
 
 
+def find_soffice() -> str | None:
+    """Locate LibreOffice even when it isn't on PATH (its Windows installer
+    doesn't add itself there)."""
+    found = shutil.which("soffice") or shutil.which("libreoffice")
+    if found:
+        return found
+    for candidate in (
+        Path(r"C:\Program Files\LibreOffice\program\soffice.exe"),
+        Path(r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"),
+        Path("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
+    ):
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 def convert_to_pdf(docx_path: Path) -> Path | None:
     """Convert with LibreOffice if installed; return the PDF path or None."""
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    soffice = find_soffice()
     if soffice is None:
         return None
     try:
