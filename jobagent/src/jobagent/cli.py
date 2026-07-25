@@ -426,8 +426,9 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
                      resume_path=str(resume_pdf or resume_docx),
                      cover_letter_path=str(cover_docx))
         console.print(f"  [green]->[/green] {job_dir}"
-                      + ("" if resume_pdf else "  [yellow](no PDF — LibreOffice not "
-                         "installed, docx only)[/yellow]"))
+                      + ("" if resume_pdf else "  [yellow](no PDF — LibreOffice "
+                         "missing, or the old PDF is still open in a viewer; "
+                         "close it and re-run. docx was written)[/yellow]"))
         done.append(job.url)
     return done
 
