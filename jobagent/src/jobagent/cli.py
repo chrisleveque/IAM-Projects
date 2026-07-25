@@ -711,7 +711,7 @@ def status():
 @app.command()
 def doctor():
     """Check that config, profile, API key, and browser are ready to go."""
-    import shutil as _shutil
+    from .docgen import find_soffice
 
     cfg = _cfg()
     ok = True
@@ -744,9 +744,9 @@ def doctor():
                   "— run: playwright install chromium")
     except Exception as exc:
         check("playwright chromium installed", False, f"({exc})")
-    has_soffice = bool(_shutil.which("soffice") or _shutil.which("libreoffice"))
+    soffice_path = find_soffice()
     console.print(f"  LibreOffice for PDF export (optional): "
-                  f"{'[green]found — will attempt PDF, falls back to .docx[/green]' if has_soffice else '[yellow]not found — .docx only[/yellow]'}")
+                  f"{f'[green]found at {soffice_path}[/green]' if soffice_path else '[yellow]not found — .docx only[/yellow]'}")
     console.print("\n[green]All set — run: jobagent login[/green]" if ok
                   else "\n[yellow]Fix the items above, then rerun jobagent doctor.[/yellow]")
 
