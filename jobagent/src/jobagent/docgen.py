@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from docx import Document
@@ -331,13 +332,21 @@ def convert_to_pdf(docx_path: Path) -> Path | None:
     soffice = find_soffice()
     if soffice is None:
         return None
+    pdf = docx_path.with_suffix(".pdf")
+    # Delete any PDF from a previous run first — otherwise a failed conversion
+    # would leave the stale file behind and we'd report it as fresh output.
+    pdf.unlink(missing_ok=True)
+    # A dedicated user profile lets headless conversion run even while the
+    # user has LibreOffice open (it normally refuses: one instance per profile).
+    profile = Path(tempfile.gettempdir()) / "jobagent-soffice-profile"
     try:
         subprocess.run(
-            [soffice, "--headless", "--convert-to", "pdf",
-             "--outdir", str(docx_path.parent), str(docx_path)],
+            [soffice, "--headless",
+             f"-env:UserInstallation={profile.absolute().as_uri()}",
+             "--convert-to", "pdf", "--outdir", str(docx_path.parent),
+             str(docx_path)],
             check=True, capture_output=True, timeout=120,
         )
     except (subprocess.SubprocessError, OSError):
         return None
-    pdf = docx_path.with_suffix(".pdf")
     return pdf if pdf.exists() else None
