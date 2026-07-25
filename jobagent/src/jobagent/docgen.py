@@ -175,7 +175,12 @@ def _build_running_header(doc: Document, name: str, contact: dict,
 
 
 def _clear_table_borders(table) -> None:
-    """Explicitly mark every table border as none so no viewer draws boxes."""
+    """Explicitly mark every table border as none so no viewer draws boxes.
+
+    Position matters: the OOXML schema requires tblBorders before
+    tblLayout/tblLook — appended at the end it gets ignored by stricter
+    parsers (Windows LibreOffice draws default borders again).
+    """
     borders = OxmlElement("w:tblBorders")
     for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
         el = OxmlElement(f"w:{edge}")
@@ -183,7 +188,12 @@ def _clear_table_borders(table) -> None:
         el.set(qn("w:sz"), "0")
         el.set(qn("w:space"), "0")
         borders.append(el)
-    table._tbl.tblPr.append(borders)
+    tbl_pr = table._tbl.tblPr
+    tbl_w = tbl_pr.find(qn("w:tblW"))
+    if tbl_w is not None:
+        tbl_w.addnext(borders)
+    else:
+        tbl_pr.insert(0, borders)
 
 
 def _cell_writer(cell):
@@ -274,7 +284,48 @@ def _right_column(cell, resume) -> None:
             par.add_run(line)
 
 
-def write_resume_docx(resume, path: Path, contact: dict | None = None) -> Path:
+def _iter_all_paragraphs(doc: Document):
+    yield from doc.sections[0].header.paragraphs
+    yield from doc.paragraphs
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                yield from cell.paragraphs
+
+
+def _apply_compact(doc: Document, level: int) -> None:
+    """Progressively tighten the layout so long resumes still fit two pages.
+
+    Level 1 squeezes line spacing and paragraph gaps; level 2 additionally
+    narrows the page margins and shrinks the header name a notch.
+    """
+    if level <= 0:
+        return
+    for par in _iter_all_paragraphs(doc):
+        pf = par.paragraph_format
+        pf.line_spacing = 1.0 if level == 1 else 0.98
+        if pf.space_before is not None and pf.space_before.pt > 0:
+            pf.space_before = Pt(max(pf.space_before.pt - 2, 0))
+        if pf.space_after is not None and pf.space_after.pt > 1:
+            pf.space_after = Pt(max(pf.space_after.pt - 1, 1))
+    if level >= 2:
+        # Last resort before a third page: 9.5pt body (also wraps fewer
+        # lines), tighter margins, slightly smaller header name.
+        doc.styles["Normal"].font.size = Pt(9.5)
+        section = doc.sections[0]
+        section.left_margin = Inches(0.6)
+        section.right_margin = Inches(0.6)
+        section.top_margin = Inches(0.45)
+        section.bottom_margin = Inches(0.4)
+        section.header_distance = Inches(0.25)
+        for par in doc.sections[0].header.paragraphs:
+            for run in par.runs:
+                if run.font.size == Pt(24):
+                    run.font.size = Pt(22)
+
+
+def write_resume_docx(resume, path: Path, contact: dict | None = None,
+                      compact: int = 0) -> Path:
     doc = Document()
     _base_style(doc)
     _build_running_header(doc, resume.name, contact or {},
@@ -292,6 +343,7 @@ def write_resume_docx(resume, path: Path, contact: dict | None = None) -> Path:
     right.width = Inches(2.25)
     _left_column(left, resume)
     _right_column(right, resume)
+    _apply_compact(doc, compact)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(path))
@@ -325,6 +377,15 @@ def find_soffice() -> str | None:
         if candidate.exists():
             return str(candidate)
     return None
+
+
+def count_pdf_pages(pdf_path: Path) -> int:
+    """Page count from the PDF's /Count entries (no PDF library needed)."""
+    try:
+        counts = re.findall(rb"/Count\s+(\d+)", pdf_path.read_bytes())
+    except OSError:
+        return 0
+    return max((int(c) for c in counts), default=0)
 
 
 def convert_to_pdf(docx_path: Path) -> Path | None:
