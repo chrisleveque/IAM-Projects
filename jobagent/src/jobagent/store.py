@@ -8,12 +8,16 @@ stay at tailored/queued with the docs generated for a manual apply.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-STATUSES = ("discovered", "scored", "queued", "tailored", "applied", "skipped")
+STATUSES = ("discovered", "scored", "queued", "tailored", "applied", "skipped",
+            # autonomous external applying:
+            "filled",    # form completed in a dry run, nothing submitted
+            "blocked")   # needs a human: bot wall, unanswerable question, ...
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -30,10 +34,33 @@ CREATE TABLE IF NOT EXISTS jobs (
     score_reasons TEXT DEFAULT '',
     resume_path TEXT DEFAULT '',
     cover_letter_path TEXT DEFAULT '',
+    apply_url TEXT DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     applied_at TEXT
 );
+
+-- Answers the agent worked out once, reused on later forms so the same
+-- question is always answered the same way.
+CREATE TABLE IF NOT EXISTS answer_cache (
+    question_key TEXT PRIMARY KEY,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+-- Audit trail: every autonomous attempt, and every answer it submitted.
+CREATE TABLE IF NOT EXISTS application_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    ts TEXT NOT NULL,
+    ats TEXT DEFAULT '',
+    outcome TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    answers_json TEXT DEFAULT '',
+    parked_json TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_events_url ON application_events(url);
 """
 
 
@@ -56,6 +83,7 @@ class Job:
     score_reasons: str = ""
     resume_path: str = ""
     cover_letter_path: str = ""
+    apply_url: str = ""   # external ATS URL discovered from the posting
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     applied_at: str | None = None
@@ -77,6 +105,8 @@ class Store:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(jobs)")}
         if "saved" not in cols:
             self.conn.execute("ALTER TABLE jobs ADD COLUMN saved INTEGER DEFAULT 0")
+        if "apply_url" not in cols:
+            self.conn.execute("ALTER TABLE jobs ADD COLUMN apply_url TEXT DEFAULT ''")
         self.conn.commit()
 
     def close(self) -> None:
@@ -159,6 +189,62 @@ class Store:
         cols = ", ".join(f"{k} = ?" for k in fields)
         self.conn.execute(f"UPDATE jobs SET {cols} WHERE url = ?", (*fields.values(), url))
         self.conn.commit()
+
+    # --- answer cache ----------------------------------------------------
+    def get_cached_answer(self, question_key: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT answer FROM answer_cache WHERE question_key = ?",
+            (question_key,),
+        ).fetchone()
+        return row["answer"] if row else None
+
+    def put_cached_answer(self, question_key: str, question: str,
+                          answer: str) -> None:
+        if not question_key or not answer:
+            return
+        self.conn.execute(
+            """INSERT INTO answer_cache (question_key, question, answer, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(question_key) DO UPDATE SET answer = excluded.answer""",
+            (question_key, question, answer, _now()),
+        )
+        self.conn.commit()
+
+    def cached_answers(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT question, answer, created_at FROM answer_cache ORDER BY created_at"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # --- audit trail -----------------------------------------------------
+    def log_application(self, url: str, ats: str, outcome: str, note: str = "",
+                        answers: dict | None = None,
+                        parked: list[str] | None = None) -> None:
+        """Record one autonomous attempt, including what was answered."""
+        self.conn.execute(
+            """INSERT INTO application_events
+                   (url, ts, ats, outcome, note, answers_json, parked_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (url, _now(), ats, outcome, note,
+             json.dumps(answers or {}, ensure_ascii=False),
+             json.dumps(parked or [], ensure_ascii=False)),
+        )
+        self.conn.commit()
+
+    def application_events(self, url: str | None = None,
+                           limit: int = 50) -> list[dict]:
+        where, params = ("WHERE url = ?", [url]) if url else ("", [])
+        rows = self.conn.execute(
+            f"SELECT * FROM application_events {where} ORDER BY id DESC LIMIT ?",
+            [*params, limit],
+        ).fetchall()
+        events = []
+        for row in rows:
+            event = dict(row)
+            event["answers"] = json.loads(event.pop("answers_json") or "{}")
+            event["parked"] = json.loads(event.pop("parked_json") or "[]")
+            events.append(event)
+        return events
 
     def count_applied_today(self) -> int:
         today = datetime.now(timezone.utc).date().isoformat()

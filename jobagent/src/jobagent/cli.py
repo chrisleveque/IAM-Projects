@@ -433,6 +433,128 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
     return done
 
 
+@app.command(name="auto-apply")
+def auto_apply_cmd(
+    submit: bool = typer.Option(
+        False, "--submit",
+        help="Actually submit. Without this it fills the form, screenshots it, "
+             "and stops — use that first to check the agent's judgement."),
+    saved: bool = typer.Option(False, "--saved",
+                               help="Only jobs imported from your saved list"),
+    url: Optional[str] = typer.Option(None, help="Only this one job URL"),
+    limit: int = typer.Option(0, help="Stop after N jobs (0 = no limit)"),
+    retry_blocked: bool = typer.Option(
+        False, "--retry-blocked",
+        help="Also retry jobs previously parked as blocked"),
+):
+    """Apply on the employer's own ATS, unattended (Greenhouse and Lever).
+
+    Never submits a form with an unanswered required question — those are
+    parked as 'blocked' with the reason. Everything it submits is logged, so
+    `jobagent audit` can show exactly what was sent.
+    """
+    from .apply import auto
+    from .browser import BrowserSession
+
+    cfg = _cfg()
+    store = _store(cfg)
+    if url:
+        job = store.get_job(url)
+        if job is None:
+            raise typer.Exit(code=_fail(f"job not found in tracker: {url}"))
+        jobs = [job]
+    else:
+        statuses = ("tailored", "filled") + (("blocked",) if retry_blocked else ())
+        jobs = store.list_jobs(status=statuses, saved=True if saved else None)
+    if limit > 0:
+        jobs = jobs[:limit]
+    if not jobs:
+        console.print("Nothing to apply to. Run [cyan]jobagent tailor[/cyan] first.")
+        return
+
+    try:
+        ai = _ai(cfg)
+        master = _master_resume(cfg)
+    except Exception as exc:
+        # Without the AI only answers.yaml rules resolve; unknown questions park.
+        console.print(f"[yellow]AI unavailable ({exc}); only answers.yaml "
+                      "rules will be used.[/yellow]")
+        ai, master = None, ""
+
+    answers = _answers(cfg)
+    missing = _missing_compliance_answers(answers)
+    if missing:
+        console.print(
+            "[yellow]These compliance questions have no answer in "
+            "answers.yaml, so any form asking them will be parked:[/yellow] "
+            + ", ".join(missing)
+            + "\n[dim]See profile/answers.example.yaml.[/dim]")
+
+    mode = ("[red]LIVE — applications will be submitted[/red]" if submit
+            else "[cyan]dry run — nothing will be submitted[/cyan]")
+    console.print(f"{len(jobs)} job(s) · {mode}")
+
+    with BrowserSession(cfg, site="linkedin") as session:
+        counts = auto.run(session, jobs, cfg, store, ai, master,
+                          answers, submit, console)
+
+    console.print("\n[bold]Results[/bold]")
+    for outcome, n in sorted(counts.items()):
+        console.print(f"  {outcome}: {n}")
+    if not submit and counts.get("filled"):
+        console.print("\nReview the screenshots, then re-run with "
+                      "[cyan]--submit[/cyan] to send them.")
+    if counts.get("blocked"):
+        console.print("Blocked jobs need a human: [cyan]jobagent manual[/cyan]")
+
+
+def _missing_compliance_answers(answers: dict) -> list[str]:
+    """Which legally-weighted questions answers.yaml can't answer yet.
+
+    These are never AI-guessed, so anything listed here becomes a parked
+    application rather than a submitted one.
+    """
+    from .apply.formfill import match_answer
+
+    probes = {
+        "work authorization": "Are you legally authorized to work in the US?",
+        "visa sponsorship": "Will you now or in the future require sponsorship?",
+        "salary expectations": "What are your salary expectations?",
+        "criminal history": "Have you ever been convicted of a felony?",
+        "security clearance": "Do you hold an active security clearance?",
+        "drug screening": "Are you willing to submit to a drug screen?",
+    }
+    return [name for name, question in probes.items()
+            if not match_answer(question, answers)]
+
+
+@app.command()
+def audit(
+    url: Optional[str] = typer.Option(None, help="Only events for this job URL"),
+    limit: int = typer.Option(20, help="How many events to show"),
+):
+    """Show what the autonomous applier did, including every answer it sent."""
+    cfg = _cfg()
+    store = _store(cfg)
+    events = store.application_events(url, limit)
+    if not events:
+        console.print("No autonomous application attempts recorded yet.")
+        return
+    for event in events:
+        colour = {"submitted": "green", "filled": "cyan"}.get(event["outcome"], "yellow")
+        console.print(Panel(
+            f"[{colour}]{event['outcome'].upper()}[/{colour}]  "
+            f"{event['ats'] or '?'}  {event['ts']}\n"
+            f"{event['url']}\n"
+            + (f"[dim]{event['note']}[/dim]\n" if event["note"] else ""),
+            expand=False))
+        for question, answer in (event["answers"] or {}).items():
+            console.print(f"    [green]✓[/green] {question[:60]}  [dim]->[/dim] "
+                          f"{str(answer)[:60]}")
+        for parked in event["parked"] or []:
+            console.print(f"    [yellow]•[/yellow] [dim]{str(parked)[:120]}[/dim]")
+
+
 @app.command(name="apply")
 def apply_cmd(
     source: Optional[str] = typer.Option(None, help="Only apply on one source: linkedin | indeed"),

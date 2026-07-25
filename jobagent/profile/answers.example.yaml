@@ -1,0 +1,50 @@
+# Template for profile/answers.yaml — copy it there and fill it in.
+#
+# This file is the agent's ONLY source for questions that carry legal weight.
+# `jobagent auto-apply` will not let the AI guess these: any compliance
+# question not answered here parks the application as "blocked" instead of
+# submitting it. The more of this you fill in, the more applications complete
+# unattended.
+
+contact:
+  full_name: ""
+  email: ""
+  phone: ""
+  city: ""                 # "City, ST"
+  linkedin: ""
+  github: ""
+  tryhackme: ""
+
+# Legal / compliance answers. Nothing here is inferred — leave a value out and
+# the agent parks the question rather than answering it for you.
+work_authorization:
+  authorized_to_work_us: true
+  require_sponsorship: false
+
+preferences:
+  willing_to_relocate: false
+  desired_salary: ""       # e.g. "120000" or "Negotiable"
+  notice_period_days: 14
+
+years_experience:
+  default: 5
+  by_skill:                # matched against "years of X experience" questions
+    okta: 3
+    active directory: 5
+    python: 3
+
+# Anything else, matched by keyword against the question text. The agent also
+# writes answers here as it learns them, so it never asks twice.
+custom_answers:
+  - match: ["felony", "convicted", "criminal"]
+    answer: "No"
+  - match: ["drug test", "drug screen"]
+    answer: "Yes"
+  - match: ["security clearance"]
+    answer: "No"
+  - match: ["at least 18", "18 years"]
+    answer: "Yes"
+  - match: ["how did you hear"]
+    answer: "LinkedIn"
+  - match: ["start date", "available to start"]
+    answer: "Two weeks from offer"

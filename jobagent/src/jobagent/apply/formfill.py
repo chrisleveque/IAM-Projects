@@ -67,11 +67,15 @@ def match_answer(question: str, answers: dict) -> str | None:
         return contact.get("email")
     if "linkedin" in q:
         return contact.get("linkedin")
-    if "first name" in q:
+    if "first name" in q or "given name" in q:
         return (contact.get("full_name") or "").split(" ")[0] or None
-    if "last name" in q:
+    if "last name" in q or "surname" in q or "family name" in q:
         parts = (contact.get("full_name") or "").split(" ")
         return parts[-1] if len(parts) > 1 else None
+    # Lever and friends ask for one combined name field.
+    if q.strip(" *:") in ("name", "your name") or any(
+            k in q for k in ("full name", "legal name", "preferred name")):
+        return contact.get("full_name")
     if "city" in q or ("location" in q and "relocat" not in q):
         return contact.get("city")
 
