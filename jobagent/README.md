@@ -93,12 +93,65 @@ or skip — and confirmed answers are saved back to `answers.yaml` so you're onl
 asked once. Jobs that link out to an external ATS (Workday, Greenhouse, …) are
 left in the tracker with their tailored docs ready for a manual apply.
 
+## Autonomous external applying (`auto-apply`)
+
+Jobs that link out to the employer's own ATS can be completed without you, on
+the systems that don't require an account:
+
+```bash
+jobagent auto-apply              # fills every form, screenshots it, submits NOTHING
+jobagent auto-apply --submit     # actually submits
+jobagent audit                   # every attempt, with every answer it sent
+```
+
+Start with the plain (dry-run) form. It fills each application, saves a
+full-page screenshot to `output/<job>/apply/filled.png`, and prints which
+questions it answered and which it refused to. Once the answers look right,
+re-run with `--submit`.
+
+**Supported:** Greenhouse and Lever (no account needed). Workday, iCIMS,
+Taleo, SmartRecruiters, Ashby, Workable and BambooHR are *detected* and parked
+as `blocked` with the ATS named — they need an account and often a bot check,
+so they go through `jobagent manual`.
+
+### What it refuses to do
+
+These are enforced in code, not merely asked of the model:
+
+- **Never submits a form with an unanswered required question.** The job is
+  parked as `blocked` naming the question, even in `--submit` mode.
+- **Never guesses a legal/compliance answer.** Work authorization,
+  sponsorship, salary, criminal history, clearances, drug screening: these come
+  from `answers.yaml` or the application is parked. Fill in
+  `profile/answers.example.yaml` — `auto-apply` warns upfront which ones are
+  still missing, and each one you add converts parked applications into
+  completed ones.
+- **Never answers demographic self-ID questions.** Where the form offers
+  "decline to self-identify" it picks that (truthful, and keeps the form
+  moving); otherwise it leaves the question blank.
+- **Never works around a CAPTCHA or bot wall.** It detects them and parks.
+- **Never invents an option.** If the model's answer isn't one of the real
+  choices, the question is parked rather than force-fitted.
+
+Answers it works out are cached in the tracker, so the same question is
+answered identically on every later form and costs no extra AI calls.
+
+### Reviewing after the fact
+
+`auto-apply` is unattended, so review happens after submission rather than
+before: `jobagent audit` prints each attempt with every question/answer pair it
+sent and everything it parked. If something went out wrong you can ask the
+employer to withdraw it — which is why the audit log exists.
+
 ## Honesty guarantee
 
 The tailoring prompt enforces: no invented employers, titles, dates, degrees,
 certifications, metrics, or skills. It only reorders, selects, and rewords what
 is in `profile/master_resume.md`. Still — proofread `output/` before applying;
 you are the last reviewer.
+
+The same rule governs form answers: the agent may only use facts from your
+profile and `answers.yaml`, and parks anything it can't support.
 
 ## Grab all saved-job links in one click (bookmarklet)
 
