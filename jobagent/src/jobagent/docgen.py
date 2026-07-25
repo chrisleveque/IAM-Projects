@@ -66,17 +66,17 @@ def _base_style(doc: Document) -> None:
     style.font.name = BODY_FONT
     style.font.size = BODY_SIZE
     # Word's template defaults (1.08 line spacing, 8pt after each paragraph,
-    # 1" top/bottom margins) balloon the page count — compact them to match
-    # the original resume's density.
-    style.paragraph_format.line_spacing = 1.0
+    # 1" top/bottom margins) balloon the page count — bring them down to the
+    # original resume's density, but keep a little air between lines.
+    style.paragraph_format.line_spacing = 1.05
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.space_after = Pt(0)
     section = doc.sections[0]
-    section.left_margin = Inches(0.6)
-    section.right_margin = Inches(0.6)
-    section.top_margin = Inches(0.5)
-    section.bottom_margin = Inches(0.4)
-    section.header_distance = Inches(0.25)
+    section.left_margin = Inches(0.7)
+    section.right_margin = Inches(0.7)
+    section.top_margin = Inches(0.55)
+    section.bottom_margin = Inches(0.5)
+    section.header_distance = Inches(0.3)
 
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
@@ -173,6 +173,18 @@ def _build_running_header(doc: Document, name: str, contact: dict,
     _bottom_rule(header.add_paragraph())
 
 
+def _clear_table_borders(table) -> None:
+    """Explicitly mark every table border as none so no viewer draws boxes."""
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{edge}")
+        el.set(qn("w:val"), "none")
+        el.set(qn("w:sz"), "0")
+        el.set(qn("w:space"), "0")
+        borders.append(el)
+    table._tbl.tblPr.append(borders)
+
+
 def _cell_writer(cell):
     """Cells start with one empty paragraph — reuse it for the first write."""
     state = {"used_first": False}
@@ -188,8 +200,8 @@ def _cell_writer(cell):
 
 def _section_heading(new_par, text: str) -> None:
     par = new_par()
-    par.paragraph_format.space_before = Pt(6)
-    par.paragraph_format.space_after = Pt(3)
+    par.paragraph_format.space_before = Pt(8)
+    par.paragraph_format.space_after = Pt(4)
     run = par.add_run(text.upper())
     run.bold = True
     run.font.size = Pt(12)
@@ -198,8 +210,8 @@ def _section_heading(new_par, text: str) -> None:
 
 def _subheading(new_par, text: str) -> None:
     par = new_par()
-    par.paragraph_format.space_before = Pt(4)
-    par.paragraph_format.space_after = Pt(1)
+    par.paragraph_format.space_before = Pt(6)
+    par.paragraph_format.space_after = Pt(2)
     run = par.add_run(text)
     run.bold = True
     run.font.color.rgb = NAVY
@@ -212,7 +224,7 @@ def _bullet(cell, text: str) -> None:
     par = cell.add_paragraph()
     par.paragraph_format.left_indent = Inches(0.14)
     par.paragraph_format.first_line_indent = Inches(-0.14)
-    par.paragraph_format.space_after = Pt(1)
+    par.paragraph_format.space_after = Pt(2)
     par.add_run("• " + text)
 
 
@@ -221,7 +233,7 @@ def _left_column(cell, resume) -> None:
     _section_heading(new_par, "Experience")
     for role in resume.experience:
         company_par = new_par()
-        company_par.paragraph_format.space_before = Pt(5)
+        company_par.paragraph_format.space_before = Pt(6)
         company_par.paragraph_format.space_after = Pt(0)
         company_par.add_run(role.company).bold = True
         if role.location:
@@ -273,9 +285,10 @@ def write_resume_docx(resume, path: Path, contact: dict | None = None) -> Path:
 
     table = doc.add_table(rows=1, cols=2)
     table.autofit = False
+    _clear_table_borders(table)
     left, right = table.rows[0].cells
-    left.width = Inches(5.0)
-    right.width = Inches(2.3)
+    left.width = Inches(4.85)
+    right.width = Inches(2.25)
     _left_column(left, resume)
     _right_column(right, resume)
 
