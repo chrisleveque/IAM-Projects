@@ -92,6 +92,26 @@ shopagent support draft                # draft replies to inbox messages
 shopagent marketing draft              # promote listed products
 ```
 
+### Reconciling manually-sourced products
+
+If you source or list a product outside shopagent — by hand on CJ's site, through
+CJ's own Shopify app, or in Seller Central directly — shopagent's pipeline has
+no record of it, so fulfillment can't map its orders to a CJ variant (they'll
+show up as `attention` instead of being auto-fulfilled, which is safe but not
+automatic). Register it after the fact with:
+
+```bash
+shopagent products import <cj-product-id> --price 79.99 \
+    --shopify-id gid://shopify/Product/123456789 --status listed
+```
+
+This looks the product up on CJ by id to fill in cost, the variant id, a
+freight quote, and photos automatically — you only supply your selling price
+and, optionally, the Shopify product id and an existing Amazon SKU/status
+(`--amazon-sku`, `--amazon-status`) if you already listed it there too, so the
+Amazon agent doesn't try to create a duplicate listing. Running it again for
+the same product id updates the existing pipeline row rather than duplicating it.
+
 Run the tests (no network or API keys needed):
 
 ```bash

@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .config import AppConfig, load_config
-from .store import Store
+from .store import PRODUCT_STATUSES, Store
 
 app = typer.Typer(
     help="AI agent team for a Shopify dropshipping business. Agents research, "
@@ -442,6 +442,71 @@ def orders_list(status: Optional[str] = typer.Option(None, "--status")) -> None:
                       o["status"], o["customer_email"], o["cj_order_id"],
                       o["tracking_number"])
     console.print(table)
+
+
+@products_app.command("import")
+def products_import(
+    cj_pid: str = typer.Argument(..., help="CJ product id (pid) of the sourced product"),
+    price: float = typer.Option(..., "--price", help="Your live selling price"),
+    niche: str = typer.Option("", "--niche", help="Override the CJ category as the niche"),
+    shopify_id: str = typer.Option("", "--shopify-id",
+                                   help="Shopify product gid, if already listed there"),
+    status: str = typer.Option("listed", "--status",
+                               help=f"Pipeline status to record, one of {PRODUCT_STATUSES}"),
+    amazon_sku: str = typer.Option("", "--amazon-sku",
+                                   help="SKU if an Amazon listing already exists"),
+    amazon_status: str = typer.Option("", "--amazon-status",
+                                      help="Amazon status if already listed there, e.g. 'submitted'"),
+) -> None:
+    """Register a product you sourced/listed manually (e.g. via CJ's Shopify app or
+    by hand in Seller Central) into the pipeline, so shopagent's fulfillment and
+    Amazon agents can recognize and handle its future orders automatically.
+
+    Looks the product up on CJ by pid to fill in cost, variant id, a freight
+    quote, and photos — you only need to supply your selling price."""
+    cfg = _cfg()
+    _mode_banner(cfg)
+    store = _store(cfg)
+    if status not in PRODUCT_STATUSES:
+        raise typer.Exit(code=_fail(f"status must be one of {PRODUCT_STATUSES}"))
+    from .integrations.cj_client import make_cj_client
+    cj = make_cj_client(cfg)
+    product = cj.get_product(cj_pid)
+    if product is None:
+        raise typer.Exit(code=_fail(f"no CJ product found with id {cj_pid!r}"))
+    if not product.get("vid"):
+        raise typer.Exit(code=_fail(
+            f"CJ product {cj_pid!r} has no variant id — double-check the id"))
+    freight = cj.freight_calculate(product["vid"], 1, cfg.supplier.ship_to_country)
+    product_id = store.upsert_product(
+        cj_pid, product["name"],
+        cj_vid=product["vid"],
+        niche=niche or product.get("category", ""),
+        supplier_price=product["sell_price"],
+        shipping_estimate=freight.get("freight_usd") or 0,
+        proposed_price=price,
+        images_json=json.dumps(product.get("images", [])),
+        notes="imported: sourced/listed outside shopagent",
+    )
+    fields: dict = {"status": status}
+    if shopify_id:
+        fields["shopify_product_id"] = shopify_id
+    if amazon_sku:
+        fields["amazon_sku"] = amazon_sku
+    if amazon_status:
+        fields["amazon_status"] = amazon_status
+    store.update_product(product_id, **fields)
+
+    console.print(f"[green]imported[/green] product #{product_id}: {product['name']}")
+    console.print(f"  cj_vid={product['vid']}  cost=${product['sell_price']:.2f}  "
+                  f"shipping=${freight.get('freight_usd') or 0:.2f}  price=${price:.2f}")
+    if shopify_id:
+        console.print(f"  linked to shopify product {shopify_id}")
+    if amazon_sku:
+        console.print(f"  linked to amazon sku {amazon_sku} "
+                      f"(status: {amazon_status or '(none)'})")
+    console.print("[dim]future orders for this product will now map to CJ "
+                  "automatically via 'orders sync' / 'run daily'[/dim]")
 
 
 @products_app.command("list")
