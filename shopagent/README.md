@@ -112,6 +112,14 @@ and, optionally, the Shopify product id and an existing Amazon SKU/status
 Amazon agent doesn't try to create a duplicate listing. Running it again for
 the same product id updates the existing pipeline row rather than duplicating it.
 
+To retire a stale or invalid pipeline row instead — for example dry-run test
+data left over from before you connected a real store, which would otherwise
+get swept up by `run daily`'s Amazon cross-listing step — use:
+
+```bash
+shopagent products reject <id> --note "why"
+```
+
 Run the tests (no network or API keys needed):
 
 ```bash

@@ -444,6 +444,26 @@ def orders_list(status: Optional[str] = typer.Option(None, "--status")) -> None:
     console.print(table)
 
 
+@products_app.command("reject")
+def products_reject(
+    product_id: int,
+    note: str = typer.Option("", "--note", help="Why it was rejected"),
+) -> None:
+    """Mark a pipeline product rejected so it's excluded from listing/cross-listing
+    runs — use this for stale or invalid rows (e.g. dry-run test data left over
+    from before you connected a real store)."""
+    cfg = _cfg()
+    store = _store(cfg)
+    product = store.get_product(product_id)
+    if product is None:
+        raise typer.Exit(code=_fail(f"no product #{product_id}"))
+    fields: dict = {"status": "rejected"}
+    if note:
+        fields["notes"] = (product.get("notes") or "") + f" | rejected: {note}"
+    store.update_product(product_id, **fields)
+    console.print(f"#{product_id} ({product['name']}) rejected")
+
+
 @products_app.command("import")
 def products_import(
     cj_pid: str = typer.Argument(..., help="CJ product id (pid) of the sourced product"),
