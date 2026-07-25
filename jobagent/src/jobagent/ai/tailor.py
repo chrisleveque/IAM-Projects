@@ -12,6 +12,11 @@ from pydantic import BaseModel, Field
 
 from ..store import Job
 
+# Floor for the tailoring call's output budget: the whole tailored resume plus
+# a cover letter comes back in one JSON object, and a cut-off response can't
+# be parsed at all.
+TAILOR_MIN_TOKENS = 16000
+
 SYSTEM = """You are an expert resume writer tailoring a candidate's resume to one \
 specific job posting.
 
@@ -109,4 +114,7 @@ def tailor_for_job(ai, master_resume: str, job: Job,
             "\n\nSTYLE INSTRUCTIONS FROM THE CANDIDATE (follow these for tone "
             f"and wording):\n{extra_instructions.strip()}"
         )
-    return ai.parse(SYSTEM, user, TailoredPackage)
+    # A full-density resume plus a cover letter doesn't fit in a small budget;
+    # a truncated response is unusable JSON. Honor a larger configured value.
+    budget = max(getattr(ai, "max_tokens", 0) or 0, TAILOR_MIN_TOKENS)
+    return ai.parse(SYSTEM, user, TailoredPackage, max_tokens=budget)
