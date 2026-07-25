@@ -197,6 +197,7 @@ def _clear_table_borders(table) -> None:
         tbl_w.addnext(borders)
     else:
         tbl_pr.insert(0, borders)
+<<<<<<< HEAD
 
 
 def _set_column_widths(table, left: Emu, right: Emu) -> None:
@@ -216,6 +217,8 @@ def _set_column_widths(table, left: Emu, right: Emu) -> None:
     for row in table.rows:
         for cell, width in zip(row.cells, (left, right)):
             cell.width = width
+=======
+>>>>>>> origin/main
 
 
 def _cell_writer(cell):
@@ -364,6 +367,7 @@ def write_resume_docx(resume, path: Path, contact: dict | None = None,
     _left_column(left, resume)
     _right_column(right, resume)
     _apply_compact(doc, compact)
+<<<<<<< HEAD
     # After compaction, since level 2 changes the margins: experience gets
     # ~70% of the usable width (as in the original resume), so bullets run
     # wide and the competencies column sits well to the right.
@@ -371,6 +375,8 @@ def write_resume_docx(resume, path: Path, contact: dict | None = None,
     usable = Emu(section.page_width - section.left_margin - section.right_margin)
     _set_column_widths(table, Emu(int(usable * COLUMN_SPLIT)),
                        Emu(int(usable * (1 - COLUMN_SPLIT))))
+=======
+>>>>>>> origin/main
 
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(path))
