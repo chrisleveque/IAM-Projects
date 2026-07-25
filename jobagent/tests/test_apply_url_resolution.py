@@ -214,3 +214,88 @@ def test_describe_apply_markup_on_a_posting_with_no_apply_data():
     report = describe_apply_markup("<html><body><h1>Job</h1></body></html>")
     assert "no *ApplyUrl* keys found" in report
     assert "resolver would extract: (nothing)" in report
+
+
+# --- signed-out detection --------------------------------------------------
+
+def test_detects_linkedin_guest_page():
+    """Shape of the real failing posting: hashed classes, no applyUrl JSON,
+    no jobs-apply-button, apply links pointing back at linkedin.com."""
+    from jobagent.apply.auto import looks_logged_out
+
+    guest = ('<html><body><nav><a class="nav__button-secondary">Join now</a>'
+             '<a class="nav__button-secondary">Sign in</a></nav>'
+             '<a class="b1c0ad9e b0b671a8" href="https://www.linkedin.com/'
+             'authwall?sessionRedirect=x">Apply</a></body></html>')
+    assert looks_logged_out(guest)
+
+
+def test_authenticated_page_is_not_flagged_signed_out():
+    from jobagent.apply.auto import looks_logged_out
+
+    signed_in = ('<html><body><div class="global-nav__me"></div>'
+                 '<button class="jobs-apply-button">Apply</button>'
+                 '<a href="/login">sign in to view more</a></body></html>')
+    assert not looks_logged_out(signed_in)
+
+
+def test_page_with_apply_url_json_is_never_signed_out():
+    from jobagent.apply.auto import looks_logged_out
+
+    # authenticated markers win even if guest wording appears somewhere
+    html = ('{"companyApplyUrl":"https://boards.greenhouse.io/a/jobs/1"}'
+            '<a>Join LinkedIn</a>')
+    assert not looks_logged_out(html)
+
+
+def test_ordinary_page_without_either_signal_is_not_flagged():
+    from jobagent.apply.auto import looks_logged_out
+
+    assert not looks_logged_out("<html><body><h1>Some job</h1></body></html>")
+    assert not looks_logged_out("")
+
+
+def test_debug_report_calls_out_a_signed_out_page():
+    from jobagent.apply.auto import describe_apply_markup
+
+    report = describe_apply_markup(
+        '<html><body><a class="nav__button-secondary">Join now</a>'
+        '<a href="https://www.linkedin.com/authwall">Apply</a></body></html>')
+    assert "SIGNED OUT" in report
+    assert "re-import your cookie" in report
+
+
+def test_debug_report_says_signed_in_for_a_real_posting():
+    from jobagent.apply.auto import describe_apply_markup
+
+    report = describe_apply_markup(
+        '<code>{"companyApplyUrl":"https://jobs.lever.co/a/1"}</code>'
+        '<button class="jobs-apply-button">Apply</button>')
+    assert "looks signed in" in report
+
+
+POSTING_SIGNED_OUT = """
+<!doctype html><html><body>
+<nav><a class="nav__button-secondary">Join now</a>
+     <a class="nav__button-secondary">Sign in</a></nav>
+<h1>Security Engineer</h1>
+<a class="b1c0ad9e b0b671a8" href="https://www.linkedin.com/authwall"
+   onclick="stall()">Apply</a>
+<script>
+// a signed-out Apply control that opens nothing — the stall being avoided
+function stall(){ }
+</script>
+</body></html>
+"""
+
+
+def test_signed_out_posting_returns_fast_without_clicking(tmp_path):
+    """The click path costs a popup timeout per attempt and can never succeed
+    on the guest page, so it must be skipped entirely."""
+    import time
+
+    started = time.monotonic()
+    assert run_resolver(POSTING_SIGNED_OUT, tmp_path) == ""
+    elapsed = time.monotonic() - started
+    # one popup timeout alone would be ~5s; the whole call should beat that
+    assert elapsed < 5, f"took {elapsed:.1f}s — the click path was not skipped"
