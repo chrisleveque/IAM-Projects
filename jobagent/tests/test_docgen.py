@@ -166,3 +166,19 @@ def test_table_borders_declared_none_before_layout(tmp_path):
     # parsers (Windows LibreOffice) honor it
     assert tblpr.count('w:val="none"') == 6
     assert tblpr.index("tblBorders") < tblpr.index("tblLayout")
+
+
+def test_experience_column_is_wider_than_competencies(tmp_path):
+    """The grid — not just cell widths — must carry the 70/30 split, or
+    renderers fall back to equal columns and bullets wrap early."""
+    import re as _re
+    import zipfile
+
+    path = write_resume_docx(sample_resume(), tmp_path / "resume.docx",
+                             contact=sample_contact())
+    xml = zipfile.ZipFile(str(path)).read("word/document.xml").decode()
+    grid = _re.search(r"<w:tblGrid>.*?</w:tblGrid>", xml, _re.S).group(0)
+    widths = [int(w) for w in _re.findall(r'<w:gridCol w:w="(\d+)"/>', grid)]
+    assert len(widths) == 2
+    assert widths[0] / sum(widths) > 0.65      # experience column dominates
+    assert sum(widths) > 9000                  # spans the usable page width
