@@ -396,7 +396,12 @@ def convert_to_pdf(docx_path: Path) -> Path | None:
     pdf = docx_path.with_suffix(".pdf")
     # Delete any PDF from a previous run first — otherwise a failed conversion
     # would leave the stale file behind and we'd report it as fresh output.
-    pdf.unlink(missing_ok=True)
+    # On Windows this raises if the PDF is open in a viewer (WinError 32);
+    # conversion couldn't overwrite it either, so skip the PDF gracefully.
+    try:
+        pdf.unlink(missing_ok=True)
+    except OSError:
+        return None
     # A dedicated user profile lets headless conversion run even while the
     # user has LibreOffice open (it normally refuses: one instance per profile).
     profile = Path(tempfile.gettempdir()) / "jobagent-soffice-profile"
