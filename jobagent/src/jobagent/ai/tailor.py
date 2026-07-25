@@ -25,15 +25,16 @@ HARD RULES — violating these harms the candidate:
 3. Prefer the master resume's own numbers/metrics; never fabricate new ones.
 4. Mirror the job posting's terminology only where the master resume genuinely
    supports it (e.g. rename a skills grouping, lead with the most relevant bullets).
-5. Resume: at most 4-5 bullets per role, most relevant first. Summary: 2-3 lines
-   targeted at this posting.
+5. The finished resume must fit TWO pages. Budget accordingly: 4-5 bullets for
+   the most relevant role, 2-3 for older/less relevant roles, each bullet a
+   single sentence of at most ~22 words. Summary (when requested): 2-3 lines.
 6. Group skills into "skill_groups" — short subheadings like "Cybersecurity",
    "Technical Support", "Languages" (use groupings that fit the master resume
-   and this posting), each with 3-8 short keyword-style items. Also fill the
-   flat "skills" list with the same items for compatibility.
-7. If the master resume has personal/technical projects, put them in
-   "projects" as one concise bullet each (most relevant first); otherwise
-   return an empty list — never invent projects.
+   and this posting), each with 3-6 items of 1-3 words. Also fill the flat
+   "skills" list with the same items for compatibility.
+7. If the master resume has personal/technical projects, put the most relevant
+   in "projects" — at most 4, one concise bullet (max ~20 words) each;
+   otherwise return an empty list — never invent projects.
 8. Cover letter: 3 short paragraphs, specific to this company and role, plain
    text, no addresses or date header, greeting "Dear Hiring Manager," unless a
    name appears in the posting. Same no-invention rule applies.

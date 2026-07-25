@@ -65,8 +65,18 @@ def _base_style(doc: Document) -> None:
     style = doc.styles["Normal"]
     style.font.name = BODY_FONT
     style.font.size = BODY_SIZE
-    for margin in ("left_margin", "right_margin"):
-        setattr(doc.sections[0], margin, Inches(0.75))
+    # Word's template defaults (1.08 line spacing, 8pt after each paragraph,
+    # 1" top/bottom margins) balloon the page count — compact them to match
+    # the original resume's density.
+    style.paragraph_format.line_spacing = 1.0
+    style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.space_after = Pt(0)
+    section = doc.sections[0]
+    section.left_margin = Inches(0.75)
+    section.right_margin = Inches(0.75)
+    section.top_margin = Inches(0.5)
+    section.bottom_margin = Inches(0.5)
+    section.header_distance = Inches(0.3)
 
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
