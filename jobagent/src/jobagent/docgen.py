@@ -72,11 +72,11 @@ def _base_style(doc: Document) -> None:
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.space_after = Pt(0)
     section = doc.sections[0]
-    section.left_margin = Inches(0.75)
-    section.right_margin = Inches(0.75)
+    section.left_margin = Inches(0.6)
+    section.right_margin = Inches(0.6)
     section.top_margin = Inches(0.5)
-    section.bottom_margin = Inches(0.5)
-    section.header_distance = Inches(0.3)
+    section.bottom_margin = Inches(0.4)
+    section.header_distance = Inches(0.25)
 
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
@@ -206,8 +206,14 @@ def _subheading(new_par, text: str) -> None:
 
 
 def _bullet(cell, text: str) -> None:
-    par = cell.add_paragraph(text, style="List Bullet")
+    # Manual hanging-indent bullets: the built-in List Bullet style indents
+    # ~0.5" before text starts, which wraps nearly every line an extra time
+    # inside a table column and pushes the resume past two pages.
+    par = cell.add_paragraph()
+    par.paragraph_format.left_indent = Inches(0.14)
+    par.paragraph_format.first_line_indent = Inches(-0.14)
     par.paragraph_format.space_after = Pt(1)
+    par.add_run("• " + text)
 
 
 def _left_column(cell, resume) -> None:
@@ -268,7 +274,7 @@ def write_resume_docx(resume, path: Path, contact: dict | None = None) -> Path:
     table = doc.add_table(rows=1, cols=2)
     table.autofit = False
     left, right = table.rows[0].cells
-    left.width = Inches(4.7)
+    left.width = Inches(5.0)
     right.width = Inches(2.3)
     _left_column(left, resume)
     _right_column(right, resume)
