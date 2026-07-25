@@ -19,6 +19,7 @@ from .fields import attach_file, fill_field, read_fields
 FILLED = "filled"        # dry run: filled and screenshotted, not submitted
 SUBMITTED = "submitted"
 BLOCKED = "blocked"      # bot wall, unanswerable required question, etc.
+CLOSED = "closed"        # posting no longer accepting applications
 FAILED = "failed"        # unexpected error
 
 # Bot walls we do not attempt to work around.

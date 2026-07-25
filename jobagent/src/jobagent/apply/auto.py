@@ -19,7 +19,8 @@ from urllib.parse import urlsplit
 
 from ..ai.answerer import Answerer
 from ..ats import adapter_for, detect_ats
-from ..ats.base import BLOCKED, FAILED, SUBMITTED, ApplyContext, ApplyReport
+from ..ats.base import (BLOCKED, CLOSED, FAILED, SUBMITTED, ApplyContext,
+                        ApplyReport)
 
 # Buttons on a LinkedIn/Indeed posting that lead to the employer's own ATS.
 EXTERNAL_APPLY_SELECTORS = (
@@ -72,6 +73,24 @@ _GUEST_MARKERS = (
 )
 
 
+# A posting that has closed can never be applied to — it should leave the
+# queue rather than be retried forever.
+_CLOSED_MARKERS = (
+    "no longer accepting applications",
+    "this job is no longer available",
+    "no longer available",
+    "this job posting has expired",
+    "applications are closed",
+    "position has been filled",
+)
+
+
+def posting_is_closed(page_html: str) -> bool:
+    """True when LinkedIn says the posting stopped accepting applications."""
+    html = (page_html or "").lower()
+    return any(marker in html for marker in _CLOSED_MARKERS)
+
+
 def looks_logged_out(page_html: str) -> bool:
     """True when a posting looks like LinkedIn's signed-out guest view.
 
@@ -106,6 +125,16 @@ def extract_company_apply_url(page_html: str) -> str:
         if url.startswith("http") and is_offsite(url):
             return url
     return ""
+
+
+def _offsite_hrefs(page) -> set[str]:
+    """Every offsite link currently in the DOM (used to diff across a click)."""
+    try:
+        hrefs = page.eval_on_selector_all(
+            "a[href^='http']", "els => els.map(e => e.href)") or []
+    except Exception:
+        return set()
+    return {h for h in hrefs if is_offsite(h)}
 
 
 def _url_from_dom(page) -> str:
@@ -155,28 +184,38 @@ def _url_via_click(page, max_attempts: int = 2) -> str:
         except Exception:
             continue
         attempts += 1
+        before = _offsite_hrefs(page)
 
         url = _follow_popup(page, button.click)
         if url and is_offsite(url):
             return url
 
         # No tab opened: LinkedIn most likely showed its "applying on the
-        # company website" modal. Prefer reading the link over clicking it.
-        page.wait_for_timeout(800)
-        if any(_count(page, m) for m in MODAL_SELECTORS):
-            for link in MODAL_CONTINUE_SELECTORS:
-                target = page.locator(link).first
-                if not _count(page, link):
-                    continue
-                try:
-                    href = target.get_attribute("href") or ""
-                except Exception:
-                    href = ""
-                if href.startswith("http") and is_offsite(href):
-                    return href
-                url = _follow_popup(page, target.click, timeout=10000)
-                if url and is_offsite(url):
-                    return url
+        # company website" modal. Whatever the modal's markup, the click has
+        # put new links in the DOM — diffing against the pre-click snapshot
+        # finds the employer's URL without depending on LinkedIn's classes.
+        page.wait_for_timeout(1000)
+        for href in _offsite_hrefs(page) - before:
+            if detect_ats(href):
+                return href
+        # Then the modal's own controls, preferring a readable href.
+        for link in MODAL_CONTINUE_SELECTORS:
+            target = page.locator(link).first
+            if not _count(page, link):
+                continue
+            try:
+                href = target.get_attribute("href") or ""
+            except Exception:
+                href = ""
+            if href.startswith("http") and is_offsite(href):
+                return href
+            url = _follow_popup(page, target.click, timeout=8000)
+            if url and is_offsite(url):
+                return url
+        # Any brand-new offsite link, even one we can't classify as an ATS.
+        appeared = _offsite_hrefs(page) - before
+        if appeared:
+            return sorted(appeared)[0]
 
         # Some postings navigate the current tab instead of opening one.
         if is_offsite(page.url):
@@ -286,6 +325,18 @@ def describe_apply_markup(page_html: str) -> str:
         if marker in html:
             lines.append(f"  contains {label}")
 
+    # Every distinct offsite host the page links to — the employer's ATS is
+    # usually in here even when no selector matched it.
+    hosts: dict[str, int] = {}
+    for match in re.finditer(r'href="(https?://[^"]+)"', html):
+        host = (urlsplit(html_unescape(match.group(1))).hostname or "").lower()
+        if host and is_offsite("https://" + host):
+            hosts[host] = hosts.get(host, 0) + 1
+    lines.append(f"distinct offsite link hosts: {len(hosts)}")
+    for host, count in sorted(hosts.items(), key=lambda kv: -kv[1])[:15]:
+        ats = detect_ats("https://" + host)
+        lines.append(f"  {host}  x{count}" + (f"  [ats={ats}]" if ats else ""))
+
     resolved = extract_company_apply_url(html)
     lines.append(f"resolver would extract: {resolved or '(nothing)'}")
     return "\n".join(lines)
@@ -314,12 +365,17 @@ def apply_to_job(session, job, cfg, store, ai, master_resume: str,
     if not apply_url:
         note = "could not find an external apply link on the posting"
         try:
-            if looks_logged_out(session.page.content()):
-                note = ("LinkedIn is showing the signed-out page — the saved "
-                        "session expired. Re-run with --cookie-file to import "
-                        "a fresh cookie export into this session.")
+            html = session.page.content()
         except Exception:
-            pass
+            html = ""
+        if posting_is_closed(html):
+            # Nothing to fix and nothing to retry — take it out of the queue.
+            return ApplyReport(url=job.url, outcome=CLOSED,
+                               note="posting is no longer accepting applications")
+        if looks_logged_out(html):
+            note = ("LinkedIn is showing the signed-out page — the saved "
+                    "session expired. Re-run with --cookie-file to import "
+                    "a fresh cookie export into this session.")
         return ApplyReport(url=job.url, outcome=BLOCKED, note=note)
     if apply_url != job.apply_url:
         store.update(job.url, apply_url=apply_url)
@@ -385,7 +441,8 @@ def run(session, jobs, cfg, store, ai, master_resume: str, answers: dict,
                               answers, submit, console)
         counts[report.outcome] = counts.get(report.outcome, 0) + 1
 
-        colour = {"submitted": "green", "filled": "cyan"}.get(report.outcome, "yellow")
+        colour = {"submitted": "green", "filled": "cyan",
+                  "closed": "dim"}.get(report.outcome, "yellow")
         console.print(f"  [{colour}]{report.summary()}[/{colour}]")
         for parked in report.parked[:5]:
             console.print(f"    [dim]parked:[/dim] {parked.field.question[:70]} "
@@ -398,6 +455,8 @@ def run(session, jobs, cfg, store, ai, master_resume: str, answers: dict,
         if report.outcome == SUBMITTED:
             store.update(job.url, status="applied")
             applied_today += 1
+        elif report.outcome == CLOSED:
+            store.update(job.url, status="skipped")
         elif report.outcome == BLOCKED:
             store.update(job.url, status="blocked")
         elif report.outcome == "filled":
