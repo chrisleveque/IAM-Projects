@@ -52,6 +52,37 @@ _APPLY_URL_RE = re.compile(
 # Hosts that mean "still on the aggregator", not a real apply target.
 _AGGREGATOR_HOSTS = ("linkedin.com", "indeed.com", "licdn.com")
 
+# Signed-in LinkedIn ships these; the guest/authwall page never does. Their
+# absence is what makes a posting look like a wall rather than a job.
+_AUTHENTICATED_MARKERS = (
+    "jobs-apply-button",
+    "global-nav__me",
+    "feed-identity-module",
+    "companyapplyurl",
+)
+_GUEST_MARKERS = (
+    "authwall",
+    "nav__button-secondary",
+    "join now to see",
+    "sign in to view",
+    "sign in to see",
+    "/uas/login",
+    "guest-homepage",
+    "join linkedin",
+)
+
+
+def looks_logged_out(page_html: str) -> bool:
+    """True when a posting looks like LinkedIn's signed-out guest view.
+
+    The guest page has no apply URL in its JSON and no real apply button, so
+    resolution fails for a reason no selector change can fix.
+    """
+    html = (page_html or "").lower()
+    if any(marker in html for marker in _AUTHENTICATED_MARKERS):
+        return False
+    return any(marker in html for marker in _GUEST_MARKERS)
+
 
 def _decode(raw: str) -> str:
     """Undo JSON (\\u002F) and HTML (&amp;) escaping from embedded page data."""
@@ -87,7 +118,7 @@ def _url_from_dom(page) -> str:
     return next((h for h in hrefs if detect_ats(h)), "")
 
 
-def _follow_popup(page, action, timeout: int = 8000) -> str:
+def _follow_popup(page, action, timeout: int = 5000) -> str:
     """Run `action`, and return the URL of the tab it opens (if any)."""
     try:
         with page.context.expect_page(timeout=timeout) as popup_info:
@@ -107,15 +138,23 @@ def _follow_popup(page, action, timeout: int = 8000) -> str:
             pass
 
 
-def _url_via_click(page) -> str:
-    """Last resort: click Apply and follow the modal / popup / redirect."""
+def _url_via_click(page, max_attempts: int = 2) -> str:
+    """Last resort: click Apply and follow the modal / popup / redirect.
+
+    Capped: each attempt costs a popup timeout plus a modal wait, and trying
+    every selector on a page that has no working Apply control just stalls.
+    """
+    attempts = 0
     for selector in EXTERNAL_APPLY_SELECTORS:
+        if attempts >= max_attempts:
+            break
         button = page.locator(selector).first
         try:
             if not button.count() or not button.is_visible():
                 continue
         except Exception:
             continue
+        attempts += 1
 
         url = _follow_popup(page, button.click)
         if url and is_offsite(url):
@@ -123,7 +162,7 @@ def _url_via_click(page) -> str:
 
         # No tab opened: LinkedIn most likely showed its "applying on the
         # company website" modal. Prefer reading the link over clicking it.
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(800)
         if any(_count(page, m) for m in MODAL_SELECTORS):
             for link in MODAL_CONTINUE_SELECTORS:
                 target = page.locator(link).first
@@ -173,11 +212,17 @@ def resolve_apply_url(session, job, console=None,
     page.wait_for_timeout(2000)
 
     try:
-        found = extract_company_apply_url(page.content())
+        html = page.content()
     except Exception:
-        found = ""
+        html = ""
+    found = extract_company_apply_url(html)
     if not found:
-        found = _url_from_dom(page) or _url_via_click(page)
+        found = _url_from_dom(page)
+    # Clicking is pointless on the signed-out page — every Apply control there
+    # leads to a sign-in wall, so trying costs ~a minute per job and can only
+    # fail. Bail out and let the caller report the real reason.
+    if not found and not looks_logged_out(html):
+        found = _url_via_click(page)
     if not found and debug_dir is not None:
         _dump_for_diagnosis(page, debug_dir, console)
     return found
@@ -197,7 +242,13 @@ def describe_apply_markup(page_html: str) -> str:
     diagnosed from a short paste instead of a whole rendered page.
     """
     html = page_html or ""
-    lines = [f"page length: {len(html)} chars"]
+    signed_out = looks_logged_out(html)
+    lines = [
+        f"page length: {len(html)} chars",
+        "session: " + ("SIGNED OUT — LinkedIn served its guest/authwall page; "
+                       "no selector fix can help, re-import your cookie"
+                       if signed_out else "looks signed in"),
+    ]
 
     seen: set[tuple[str, str]] = set()
     for match in _ANY_APPLY_KEY_RE.finditer(html):
@@ -212,7 +263,7 @@ def describe_apply_markup(page_html: str) -> str:
         seen.add(entry)
         lines.append(f'  json key "{key}" -> {host}  [{mark}'
                      + (f", ats={ats}" if ats else "") + "]")
-    if len(lines) == 1:
+    if len(lines) == 2:
         lines.append("  no *ApplyUrl* keys found in the page JSON")
 
     elements = []
@@ -261,9 +312,15 @@ def apply_to_job(session, job, cfg, store, ai, master_resume: str,
     apply_url = resolve_apply_url(session, job, console,
                                   debug_dir=job_dir / "apply")
     if not apply_url:
-        return ApplyReport(
-            url=job.url, outcome=BLOCKED,
-            note="could not find an external apply link on the posting")
+        note = "could not find an external apply link on the posting"
+        try:
+            if looks_logged_out(session.page.content()):
+                note = ("LinkedIn is showing the signed-out page — the saved "
+                        "session expired. Re-run with --cookie-file to import "
+                        "a fresh cookie export into this session.")
+        except Exception:
+            pass
+        return ApplyReport(url=job.url, outcome=BLOCKED, note=note)
     if apply_url != job.apply_url:
         store.update(job.url, apply_url=apply_url)
 

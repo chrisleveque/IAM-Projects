@@ -433,6 +433,29 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
     return done
 
 
+def _load_cookies_into(session, cookie_file: str) -> None:
+    """Import a Cookie-Editor export into a live session (same trick as `go`).
+
+    LinkedIn sessions on disk expire; signed out, a posting shows the guest
+    page with no employer apply link at all, so this is the difference
+    between resolving a job and parking it.
+    """
+    from .cookies import parse_cookie_export
+
+    try:
+        cookies = parse_cookie_export(
+            Path(cookie_file).read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise typer.Exit(code=_fail(f"could not parse {cookie_file}: {exc}"))
+    if not cookies:
+        raise typer.Exit(code=_fail(
+            "no linkedin.com cookies found in that file — export while on "
+            "linkedin.com so the extension captures its cookies"))
+    session.context.add_cookies(cookies)
+    console.print(f"[green]{len(cookies)} LinkedIn cookie(s) imported into "
+                  "this live session.[/green]")
+
+
 @app.command(name="auto-apply")
 def auto_apply_cmd(
     submit: bool = typer.Option(
@@ -446,6 +469,11 @@ def auto_apply_cmd(
     retry_blocked: bool = typer.Option(
         False, "--retry-blocked",
         help="Also retry jobs previously parked as blocked"),
+    cookie_file: Optional[str] = typer.Option(
+        None, "--cookie-file",
+        help="Import a full LinkedIn cookie export (Cookie-Editor JSON) into "
+             "this session first. Needed when the saved session has expired — "
+             "signed-out LinkedIn hides the employer's apply link entirely."),
 ):
     """Apply on the employer's own ATS, unattended (Greenhouse and Lever).
 
@@ -495,6 +523,8 @@ def auto_apply_cmd(
     console.print(f"{len(jobs)} job(s) · {mode}")
 
     with BrowserSession(cfg, site="linkedin") as session:
+        if cookie_file:
+            _load_cookies_into(session, cookie_file)
         counts = auto.run(session, jobs, cfg, store, ai, master,
                           answers, submit, console)
 
