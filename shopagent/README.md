@@ -120,6 +120,16 @@ get swept up by `run daily`'s Amazon cross-listing step — use:
 shopagent products reject <id> --note "why"
 ```
 
+To wipe the pipeline entirely and start clean — e.g. after dry-run practice,
+before reconciling your real catalog from scratch — use:
+
+```bash
+shopagent products clear
+```
+
+Both commands only touch shopagent's own local tracking; neither removes or
+unpublishes anything from Shopify, Amazon, or CJ.
+
 Run the tests (no network or API keys needed):
 
 ```bash

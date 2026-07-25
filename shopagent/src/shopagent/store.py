@@ -194,6 +194,14 @@ class Store:
         self.conn.commit()
         return cur.lastrowid
 
+    def clear_products(self) -> int:
+        """Delete ALL pipeline products. Local bookkeeping only — never touches
+        the real store, supplier, or marketplace; remove listings there
+        separately if needed. Returns the number of rows deleted."""
+        cur = self.conn.execute("DELETE FROM products")
+        self.conn.commit()
+        return cur.rowcount
+
     def update_product(self, product_id: int, **fields) -> None:
         if "status" in fields and fields["status"] not in PRODUCT_STATUSES:
             raise ValueError(f"invalid product status {fields['status']!r}")
