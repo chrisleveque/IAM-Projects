@@ -181,3 +181,36 @@ def test_ats_url_in_tracker_is_used_directly():
 
     assert resolve_apply_url(FakeSession(ExplodingPage()), job) == \
         "https://boards.greenhouse.io/acme/jobs/7"
+
+
+# --- diagnosis report ------------------------------------------------------
+
+def test_describe_apply_markup_reports_structure_not_content():
+    from jobagent.apply.auto import describe_apply_markup
+
+    html = ('<html><body>'
+            '<p>Chris Leveque applied to this job on Tuesday</p>'
+            '<code>{"companyApplyUrl":"https://boards.greenhouse.io/acme/jobs/1",'
+            '"applyUrl":"https://www.linkedin.com/jobs/view/1/apply"}</code>'
+            '<button class="jobs-apply-button artdeco-button">Apply</button>'
+            '<div role="dialog"><a href="https://jobs.lever.co/x/1">Continue</a></div>'
+            '</body></html>')
+    report = describe_apply_markup(html)
+
+    assert "boards.greenhouse.io" in report and "OFFSITE" in report
+    assert "ats=greenhouse" in report
+    assert "www.linkedin.com" in report and "internal" in report
+    assert "jobs-apply-button" in report
+    assert "role=dialog" in report
+    assert "resolver would extract: https://boards.greenhouse.io/acme/jobs/1" in report
+    # page text must not leak into something the user will paste publicly
+    assert "Chris Leveque" not in report
+    assert "applied to this job" not in report
+
+
+def test_describe_apply_markup_on_a_posting_with_no_apply_data():
+    from jobagent.apply.auto import describe_apply_markup
+
+    report = describe_apply_markup("<html><body><h1>Job</h1></body></html>")
+    assert "no *ApplyUrl* keys found" in report
+    assert "resolver would extract: (nothing)" in report

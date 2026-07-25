@@ -528,6 +528,37 @@ def _missing_compliance_answers(answers: dict) -> list[str]:
             if not match_answer(question, answers)]
 
 
+@app.command(name="debug-apply")
+def debug_apply(
+    file: Optional[str] = typer.Option(
+        None, help="Path to a saved posting.html (defaults to the newest one "
+                   "auto-apply saved under output/)"),
+):
+    """Summarize a saved posting's apply markup — paste the output to get help.
+
+    Reports only structure (JSON key names, hosts, element classes), never the
+    page's text, so it's safe to share.
+    """
+    from .apply.auto import describe_apply_markup
+
+    cfg = _cfg()
+    if file:
+        path = Path(file)
+    else:
+        candidates = sorted(cfg.output_dir.glob("*/apply/posting.html"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)
+        if not candidates:
+            raise typer.Exit(code=_fail(
+                "no saved posting.html found — run jobagent auto-apply first"))
+        path = candidates[0]
+    if not path.exists():
+        raise typer.Exit(code=_fail(f"not found: {path}"))
+
+    console.print(f"[dim]{path}[/dim]\n")
+    console.print(describe_apply_markup(path.read_text(encoding="utf-8",
+                                                       errors="replace")))
+
+
 @app.command()
 def audit(
     url: Optional[str] = typer.Option(None, help="Only events for this job URL"),

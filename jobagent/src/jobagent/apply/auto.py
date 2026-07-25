@@ -183,6 +183,63 @@ def resolve_apply_url(session, job, console=None,
     return found
 
 
+_ANY_APPLY_KEY_RE = re.compile(r'"(\w*[aA]pply\w*(?:Url|URL|Link))"\s*:\s*"([^"]{5,2000})"')
+_APPLY_ELEMENT_RE = re.compile(
+    r"<(a|button)\b([^>]*(?:apply|Apply)[^>]*)>", re.I)
+_HREF_RE = re.compile(r'href="([^"]+)"')
+_CLASS_RE = re.compile(r'class="([^"]*)"')
+
+
+def describe_apply_markup(page_html: str) -> str:
+    """Summarize a posting's apply-related markup, without personal content.
+
+    Emitted by `jobagent debug-apply` so an unresolvable posting can be
+    diagnosed from a short paste instead of a whole rendered page.
+    """
+    html = page_html or ""
+    lines = [f"page length: {len(html)} chars"]
+
+    seen: set[tuple[str, str]] = set()
+    for match in _ANY_APPLY_KEY_RE.finditer(html):
+        key, raw = match.group(1), match.group(2)
+        url = _decode(raw)
+        host = urlsplit(url).hostname or "(relative)"
+        mark = "OFFSITE" if is_offsite(url) else "internal"
+        ats = detect_ats(url)
+        entry = (key, host)
+        if entry in seen:
+            continue
+        seen.add(entry)
+        lines.append(f'  json key "{key}" -> {host}  [{mark}'
+                     + (f", ats={ats}" if ats else "") + "]")
+    if len(lines) == 1:
+        lines.append("  no *ApplyUrl* keys found in the page JSON")
+
+    elements = []
+    for match in _APPLY_ELEMENT_RE.finditer(html):
+        tag, attrs = match.group(1), match.group(2)
+        href_match = _HREF_RE.search(attrs)
+        class_match = _CLASS_RE.search(attrs)
+        href = href_match.group(1) if href_match else ""
+        host = (urlsplit(href).hostname or "") if href.startswith("http") else ""
+        classes = " ".join((class_match.group(1) if class_match else "").split()[:4])
+        entry = f"  <{tag}> class={classes!r}" + (f" -> {host}" if host else "")
+        if entry not in elements:
+            elements.append(entry)
+    lines.append(f"apply-ish elements: {len(elements)}")
+    lines.extend(elements[:12])
+
+    for marker, label in (("artdeco-modal", "artdeco modal"),
+                          ('role="dialog"', "role=dialog"),
+                          ("jobs-apply-button", "jobs-apply-button")):
+        if marker in html:
+            lines.append(f"  contains {label}")
+
+    resolved = extract_company_apply_url(html)
+    lines.append(f"resolver would extract: {resolved or '(nothing)'}")
+    return "\n".join(lines)
+
+
 def _dump_for_diagnosis(page, debug_dir: Path, console=None) -> None:
     """Save the posting so an unresolvable apply link can be diagnosed."""
     try:
