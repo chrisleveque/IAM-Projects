@@ -19,12 +19,15 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Emu, Inches, Pt, RGBColor
 
 NAVY = RGBColor(0x1F, 0x38, 0x64)
 LINK_BLUE = "0563C1"
 BODY_FONT = "Times New Roman"
 BODY_SIZE = Pt(10)
+# Share of the usable page width given to the experience column, matching the
+# original resume (competencies start roughly 5.7" from the left page edge).
+COLUMN_SPLIT = 0.70
 
 # Matches URL-ish contact segments like linkedin.com/in/me, github.com/me,
 # tryhackme.com/p/me, https://example.io — but not phones or "City, ST".
@@ -196,6 +199,25 @@ def _clear_table_borders(table) -> None:
         tbl_pr.insert(0, borders)
 
 
+def _set_column_widths(table, left: Emu, right: Emu) -> None:
+    """Set the real column widths.
+
+    Cell widths (w:tcW) alone are ignored: with a fixed layout the renderer
+    uses w:tblGrid, which python-docx fills with equal-width columns. Both
+    the grid and the cells have to agree, or the resume renders 50/50.
+    """
+    grid = table._tbl.find(qn("w:tblGrid"))
+    for gridcol, width in zip(grid.findall(qn("w:gridCol")), (left, right)):
+        gridcol.set(qn("w:w"), str(int(width.twips)))
+    tbl_w = table._tbl.tblPr.find(qn("w:tblW"))
+    if tbl_w is not None:
+        tbl_w.set(qn("w:type"), "dxa")
+        tbl_w.set(qn("w:w"), str(int(left.twips + right.twips)))
+    for row in table.rows:
+        for cell, width in zip(row.cells, (left, right)):
+            cell.width = width
+
+
 def _cell_writer(cell):
     """Cells start with one empty paragraph — reuse it for the first write."""
     state = {"used_first": False}
@@ -339,11 +361,16 @@ def write_resume_docx(resume, path: Path, contact: dict | None = None,
     table.autofit = False
     _clear_table_borders(table)
     left, right = table.rows[0].cells
-    left.width = Inches(4.85)
-    right.width = Inches(2.25)
     _left_column(left, resume)
     _right_column(right, resume)
     _apply_compact(doc, compact)
+    # After compaction, since level 2 changes the margins: experience gets
+    # ~70% of the usable width (as in the original resume), so bullets run
+    # wide and the competencies column sits well to the right.
+    section = doc.sections[0]
+    usable = Emu(section.page_width - section.left_margin - section.right_margin)
+    _set_column_widths(table, Emu(int(usable * COLUMN_SPLIT)),
+                       Emu(int(usable * (1 - COLUMN_SPLIT))))
 
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(path))
