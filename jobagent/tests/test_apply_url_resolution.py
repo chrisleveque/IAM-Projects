@@ -299,3 +299,82 @@ def test_signed_out_posting_returns_fast_without_clicking(tmp_path):
     elapsed = time.monotonic() - started
     # one popup timeout alone would be ~5s; the whole call should beat that
     assert elapsed < 5, f"took {elapsed:.1f}s — the click path was not skipped"
+
+
+# --- closed postings -------------------------------------------------------
+
+def test_detects_a_closed_posting():
+    from jobagent.apply.auto import posting_is_closed
+
+    for wording in ("No longer accepting applications",
+                    "This job is no longer available",
+                    "Applications are closed",
+                    "This job posting has expired"):
+        assert posting_is_closed(f"<body><p>{wording}</p></body>"), wording
+
+
+def test_open_posting_is_not_flagged_closed():
+    from jobagent.apply.auto import posting_is_closed
+
+    assert not posting_is_closed("<body>Apply now — we are hiring!</body>")
+    assert not posting_is_closed("")
+
+
+POSTING_CLOSED = """
+<!doctype html><html><body>
+<div class="global-nav__me"></div>
+<h1>Security Engineer</h1>
+<p>No longer accepting applications</p>
+</body></html>
+"""
+
+
+def test_closed_posting_leaves_the_queue(tmp_path):
+    """A year-old saved job shouldn't keep coming back as 'blocked'."""
+    from jobagent.ats.base import CLOSED
+
+    posting = tmp_path / "closed.html"
+    posting.write_text(POSTING_CLOSED, encoding="utf-8")
+
+    from types import SimpleNamespace
+
+    from jobagent.apply.auto import apply_to_job
+    from jobagent.store import Store
+
+    store = Store(tmp_path / "t.db")
+    job = Job(url=posting.as_uri(), source="linkedin", title="T", company="C")
+    store.upsert_job(job)
+    cfg = SimpleNamespace(output_dir=tmp_path / "out")
+
+    with sync_playwright() as pw:
+        browser = _launch(pw)
+        page = browser.new_page()
+        try:
+            report = apply_to_job(FakeSession(page), job, cfg, store, None, "",
+                                  {}, False, _QuietConsole())
+        finally:
+            browser.close()
+
+    assert report.outcome == CLOSED
+    assert "no longer accepting" in report.note
+
+
+class _QuietConsole:
+    def print(self, *a, **k):
+        pass
+
+
+# --- richer diagnostics ----------------------------------------------------
+
+def test_debug_report_lists_offsite_hosts():
+    from jobagent.apply.auto import describe_apply_markup
+
+    report = describe_apply_markup(
+        '<div class="global-nav__me"></div>'
+        '<a href="https://acme.wd5.myworkdayjobs.com/en-US/careers/job/R-1">Apply</a>'
+        '<a href="https://acme.wd5.myworkdayjobs.com/en-US/careers/job/R-1">Again</a>'
+        '<a href="https://www.linkedin.com/feed">Feed</a>')
+    assert "acme.wd5.myworkdayjobs.com" in report
+    assert "ats=workday" in report
+    assert "x2" in report                      # counted, not just listed
+    assert "www.linkedin.com" not in report.split("distinct offsite")[1]
