@@ -27,7 +27,14 @@ HARD RULES — violating these harms the candidate:
    supports it (e.g. rename a skills grouping, lead with the most relevant bullets).
 5. Resume: at most 4-5 bullets per role, most relevant first. Summary: 2-3 lines
    targeted at this posting.
-6. Cover letter: 3 short paragraphs, specific to this company and role, plain
+6. Group skills into "skill_groups" — short subheadings like "Cybersecurity",
+   "Technical Support", "Languages" (use groupings that fit the master resume
+   and this posting), each with 3-8 short keyword-style items. Also fill the
+   flat "skills" list with the same items for compatibility.
+7. If the master resume has personal/technical projects, put them in
+   "projects" as one concise bullet each (most relevant first); otherwise
+   return an empty list — never invent projects.
+8. Cover letter: 3 short paragraphs, specific to this company and role, plain
    text, no addresses or date header, greeting "Dear Hiring Manager," unless a
    name appears in the posting. Same no-invention rule applies.
 
@@ -36,8 +43,10 @@ Return JSON only, no prose, matching exactly this schema:
   "resume": {
     "name": "...", "contact": "...", "summary": "...",
     "skills": ["...", ...],
+    "skill_groups": [{"name": "...", "items": ["...", ...]}, ...],
     "experience": [{"company": "...", "title": "...", "dates": "...",
                      "location": "...", "bullets": ["...", ...]}, ...],
+    "projects": ["...", ...],
     "education": ["...", ...],
     "certifications": ["...", ...]
   },
@@ -53,12 +62,19 @@ class ExperienceItem(BaseModel):
     bullets: list[str] = Field(default_factory=list)
 
 
+class SkillGroup(BaseModel):
+    name: str
+    items: list[str] = Field(default_factory=list)
+
+
 class TailoredResume(BaseModel):
     name: str
     contact: str = ""
     summary: str = ""
     skills: list[str] = Field(default_factory=list)
+    skill_groups: list[SkillGroup] = Field(default_factory=list)
     experience: list[ExperienceItem] = Field(default_factory=list)
+    projects: list[str] = Field(default_factory=list)
     education: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
 

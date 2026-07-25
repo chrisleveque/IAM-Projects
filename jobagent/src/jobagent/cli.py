@@ -379,7 +379,8 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
 
     answers = _answers(cfg)
     contact_line = _contact_from_answers(answers)
-    full_name = (answers.get("contact") or {}).get("full_name", "")
+    contact_dict = answers.get("contact") or {}
+    full_name = contact_dict.get("full_name", "")
 
     done: list[str] = []
     for job in jobs:
@@ -404,9 +405,11 @@ def _tailor_batch(cfg, store, ai, resume_text: str, jobs) -> list[str]:
         job_dir = cfg.output_dir / (
             f"{slugify(job.company or job.source)}-"
             f"{slugify(job.title or 'job')}-{job_id}")
-        resume_docx = write_resume_docx(package.resume, job_dir / "resume.docx")
+        resume_docx = write_resume_docx(package.resume, job_dir / "resume.docx",
+                                        contact=contact_dict)
         cover_docx = write_cover_letter_docx(
-            package.cover_letter, package.resume.name, job_dir / "cover_letter.docx")
+            package.cover_letter, package.resume.name,
+            job_dir / "cover_letter.docx", contact=contact_dict)
         resume_pdf = convert_to_pdf(resume_docx)
         convert_to_pdf(cover_docx)
         store.update(job.url, status="tailored",
