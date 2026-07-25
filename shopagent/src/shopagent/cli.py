@@ -444,6 +444,31 @@ def orders_list(status: Optional[str] = typer.Option(None, "--status")) -> None:
     console.print(table)
 
 
+@products_app.command("clear")
+def products_clear(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+) -> None:
+    """Delete ALL products from the local pipeline to start clean. This only
+    touches shopagent's own tracking — it does NOT remove or unpublish
+    anything from Shopify, Amazon, or CJ. Delete real listings there yourself
+    if you want them gone from the actual store too."""
+    cfg = _cfg()
+    store = _store(cfg)
+    count = len(store.list_products())
+    if count == 0:
+        console.print("no products to clear")
+        return
+    if not yes:
+        confirmed = typer.confirm(
+            f"This will permanently delete all {count} product(s) from the local "
+            "pipeline. It does NOT remove anything from Shopify, Amazon, or CJ — "
+            "only shopagent's own tracking. Continue?")
+        if not confirmed:
+            raise typer.Exit(code=_fail("cancelled"))
+    deleted = store.clear_products()
+    console.print(f"[green]cleared {deleted} product(s)[/green] from the local pipeline")
+
+
 @products_app.command("reject")
 def products_reject(
     product_id: int,
