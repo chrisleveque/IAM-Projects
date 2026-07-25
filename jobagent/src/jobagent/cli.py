@@ -525,6 +525,18 @@ def auto_apply_cmd(
     with BrowserSession(cfg, site="linkedin") as session:
         if cookie_file:
             _load_cookies_into(session, cookie_file)
+        if any(j.source == "linkedin" and not j.apply_url for j in jobs):
+            # Verify once: a refused session makes every LinkedIn posting
+            # render as the guest page, which hides the employer's apply link.
+            if auto.verify_linkedin_session(session, console):
+                console.print("[green]LinkedIn session verified.[/green]")
+            else:
+                console.print(
+                    "[red]NOT signed in to LinkedIn.[/red] Postings will render "
+                    "as the guest page, which has no employer apply link, so "
+                    "every job will block.\n"
+                    "Export fresh cookies with Cookie-Editor and re-run with "
+                    "[cyan]--cookie-file cookies.json[/cyan].")
         counts = auto.run(session, jobs, cfg, store, ai, master,
                           answers, submit, console)
 

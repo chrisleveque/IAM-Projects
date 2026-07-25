@@ -91,16 +91,53 @@ def posting_is_closed(page_html: str) -> bool:
     return any(marker in html for marker in _CLOSED_MARKERS)
 
 
-def looks_logged_out(page_html: str) -> bool:
-    """True when a posting looks like LinkedIn's signed-out guest view.
+def session_state(page_html: str) -> str:
+    """'signed-in' | 'signed-out' | 'unknown' for a LinkedIn posting.
 
-    The guest page has no apply URL in its JSON and no real apply button, so
-    resolution fails for a reason no selector change can fix.
+    Three states, not two: the absence of guest markers is NOT evidence of
+    being signed in. LinkedIn's guest page uses hashed class names and no
+    fixed wording, so a page with neither signal is genuinely unknown — and
+    reporting that as 'signed in' sent an earlier diagnosis down the wrong
+    path entirely.
     """
     html = (page_html or "").lower()
     if any(marker in html for marker in _AUTHENTICATED_MARKERS):
+        return "signed-in"
+    if any(marker in html for marker in _GUEST_MARKERS):
+        return "signed-out"
+    return "unknown"
+
+
+def looks_logged_out(page_html: str) -> bool:
+    """True unless the page positively proves an authenticated session.
+
+    Treating 'unknown' as signed-out is the safe default: on a signed-out
+    page the click path can only stall, and a posting with no apply data and
+    no authenticated markers is overwhelmingly a guest page.
+    """
+    return session_state(page_html) != "signed-in"
+
+
+def verify_linkedin_session(session, console=None) -> bool:
+    """Check once, up front, whether the browser is really signed in.
+
+    Cookie imports can appear to succeed (cookies are set) while LinkedIn
+    still refuses the session. Finding that out per-job wastes a whole run.
+    """
+    page = session.page
+    try:
+        page.goto("https://www.linkedin.com/feed/",
+                  wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(2500)
+    except Exception:
         return False
-    return any(marker in html for marker in _GUEST_MARKERS)
+    url = (page.url or "").lower()
+    if "authwall" in url or "/login" in url or "/checkpoint" in url:
+        return False
+    try:
+        return session_state(page.content()) == "signed-in"
+    except Exception:
+        return False
 
 
 def _decode(raw: str) -> str:
@@ -281,13 +318,16 @@ def describe_apply_markup(page_html: str) -> str:
     diagnosed from a short paste instead of a whole rendered page.
     """
     html = page_html or ""
-    signed_out = looks_logged_out(html)
-    lines = [
-        f"page length: {len(html)} chars",
-        "session: " + ("SIGNED OUT — LinkedIn served its guest/authwall page; "
-                       "no selector fix can help, re-import your cookie"
-                       if signed_out else "looks signed in"),
-    ]
+    state = session_state(html)
+    explain = {
+        "signed-in": "signed in (authenticated markers present)",
+        "signed-out": "SIGNED OUT — LinkedIn served its guest/authwall page; "
+                      "no selector fix can help, re-import your cookie",
+        "unknown": "UNKNOWN — no authenticated markers found. LinkedIn's guest "
+                   "page uses hashed classes and no fixed wording, so this is "
+                   "most likely signed out too",
+    }[state]
+    lines = [f"page length: {len(html)} chars", f"session: {explain}"]
 
     seen: set[tuple[str, str]] = set()
     for match in _ANY_APPLY_KEY_RE.finditer(html):
@@ -456,7 +496,8 @@ def run(session, jobs, cfg, store, ai, master_resume: str, answers: dict,
             store.update(job.url, status="applied")
             applied_today += 1
         elif report.outcome == CLOSED:
-            store.update(job.url, status="skipped")
+            # Terminal: the store refuses to move it back into the queue.
+            store.update(job.url, status="closed")
         elif report.outcome == BLOCKED:
             store.update(job.url, status="blocked")
         elif report.outcome == "filled":
