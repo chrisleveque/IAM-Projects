@@ -17,7 +17,12 @@ from pathlib import Path
 STATUSES = ("discovered", "scored", "queued", "tailored", "applied", "skipped",
             # autonomous external applying:
             "filled",    # form completed in a dry run, nothing submitted
-            "blocked")   # needs a human: bot wall, unanswerable question, ...
+            "blocked",   # needs a human: bot wall, unanswerable question, ...
+            "closed")    # terminal: the posting stopped accepting applications
+
+# A closed posting can never be applied to again, so nothing may move it back
+# into the queue — not requeue, not review, not --retry-blocked.
+TERMINAL_STATUSES = ("closed",)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -176,11 +181,22 @@ class Store:
         ).fetchall()
         return [Job.from_row(r) for r in rows]
 
-    def update(self, url: str, **fields) -> None:
+    def update(self, url: str, force: bool = False, **fields) -> bool:
+        """Apply field updates. Returns False when a terminal job was left alone.
+
+        Jobs in a terminal status (a closed posting) are immovable unless
+        `force` is passed, so no command can pull them back into the queue.
+        """
         if not fields:
-            return
+            return False
         if "status" in fields and fields["status"] not in STATUSES:
             raise ValueError(f"unknown status: {fields['status']}")
+        if not force:
+            current = self.get_job(url)
+            if (current is not None
+                    and current.status in TERMINAL_STATUSES
+                    and fields.get("status", current.status) != current.status):
+                return False
         if "easy_apply" in fields:
             fields["easy_apply"] = int(bool(fields["easy_apply"]))
         fields["updated_at"] = _now()
@@ -189,6 +205,7 @@ class Store:
         cols = ", ".join(f"{k} = ?" for k in fields)
         self.conn.execute(f"UPDATE jobs SET {cols} WHERE url = ?", (*fields.values(), url))
         self.conn.commit()
+        return True
 
     # --- answer cache ----------------------------------------------------
     def get_cached_answer(self, question_key: str) -> str | None:

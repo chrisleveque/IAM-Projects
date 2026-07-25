@@ -248,11 +248,27 @@ def test_page_with_apply_url_json_is_never_signed_out():
     assert not looks_logged_out(html)
 
 
-def test_ordinary_page_without_either_signal_is_not_flagged():
-    from jobagent.apply.auto import looks_logged_out
+def test_page_with_no_signal_either_way_is_treated_as_signed_out():
+    """A page proving nothing must not be assumed authenticated.
 
-    assert not looks_logged_out("<html><body><h1>Some job</h1></body></html>")
-    assert not looks_logged_out("")
+    Reporting 'looks signed in' for a page that merely lacked guest markers
+    is what misdirected an earlier diagnosis — LinkedIn's guest page uses
+    hashed classes and no fixed wording, so 'unknown' is the common case.
+    """
+    from jobagent.apply.auto import looks_logged_out, session_state
+
+    assert session_state("<html><body><h1>Some job</h1></body></html>") == "unknown"
+    assert looks_logged_out("<html><body><h1>Some job</h1></body></html>")
+    assert looks_logged_out("")
+
+
+def test_session_state_is_three_valued():
+    from jobagent.apply.auto import session_state
+
+    assert session_state('<button class="jobs-apply-button">Apply</button>') \
+        == "signed-in"
+    assert session_state('<a href="/authwall">x</a>') == "signed-out"
+    assert session_state("<p>nothing conclusive</p>") == "unknown"
 
 
 def test_debug_report_calls_out_a_signed_out_page():
@@ -271,7 +287,7 @@ def test_debug_report_says_signed_in_for_a_real_posting():
     report = describe_apply_markup(
         '<code>{"companyApplyUrl":"https://jobs.lever.co/a/1"}</code>'
         '<button class="jobs-apply-button">Apply</button>')
-    assert "looks signed in" in report
+    assert "signed in (authenticated markers present)" in report
 
 
 POSTING_SIGNED_OUT = """
@@ -378,3 +394,17 @@ def test_debug_report_lists_offsite_hosts():
     assert "ats=workday" in report
     assert "x2" in report                      # counted, not just listed
     assert "www.linkedin.com" not in report.split("distinct offsite")[1]
+
+
+def test_debug_report_flags_an_unknown_session_honestly():
+    """The exact shape of the posting that misled the earlier diagnosis:
+    hashed classes, no apply JSON, links only back to linkedin.com."""
+    from jobagent.apply.auto import describe_apply_markup
+
+    report = describe_apply_markup(
+        '<a class="b1c0ad9e b0b671a8 _95e2f203" href="https://www.linkedin.com/x">'
+        'Apply</a><a class="ff123a63 _440408d7" href="https://www.linkedin.com/y">'
+        'Apply</a>')
+    assert "UNKNOWN" in report
+    assert "most likely signed out" in report
+    assert "distinct offsite link hosts: 0" in report
