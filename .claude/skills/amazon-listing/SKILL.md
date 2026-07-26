@@ -200,7 +200,19 @@ creating a duplicate.
 - **Professional selling plan** — required for API access and variations
 - **GTIN exemption** for brand "Generic" — generic dropshipped goods have no
   UPC barcodes, and listing creation fails without an approved exemption.
-  Apply in Seller Central well before it's needed; it isn't instant.
+  **Apply for this first, before building any listing.** Seller Central search
+  → "GTIN exemption" → Apply, choosing the product category and brand
+  "Generic" (or the no-brand option).
+
+  This is worth confirming rather than assuming, because the two paths
+  disagree: the web form's "This product does not have a Product ID" toggle
+  accepts the claim without checking, so a listing can get all the way to
+  submitted while the exemption doesn't actually exist. The bulk upload
+  validates properly and fails with `'externally_assigned_product_identifier'
+  is required but missing` / `'Merchant Suggested ASIN' is required but
+  missing` — that error means the exemption isn't on file, not that the row
+  is wrong. Selecting `GTIN Exempt` as the Product Id Type only claims the
+  exemption; the account has to hold it.
 - For automated order sync later, the SP-API app also needs the
   **Direct-to-Consumer Shipping** restricted role, which Amazon reviews by hand
   and can take days. Worth starting early even if API work is deferred.
