@@ -152,6 +152,24 @@ class CJClient:
             })
         return out
 
+    def list_variants(self, pid: str) -> list[dict]:
+        """All color/size variants of a product, each with its own vid — needed
+        to build multi-variant listings (e.g. Amazon color variations) where
+        every option must map back to its own CJ variant for fulfillment.
+        get_product() only surfaces the first variant; this surfaces all of them.
+        """
+        data = self._request("GET", "/product/query", params={"pid": pid})
+        if not data:
+            return []
+        out = []
+        for i, v in enumerate(data.get("variants") or []):
+            label = (v.get("variantKey") or v.get("variantNameEn")
+                    or v.get("variantName") or f"Variant {i + 1}")
+            price, _ = parse_price_range(v.get("variantSellPrice"))
+            out.append({"vid": v.get("vid", ""), "label": label,
+                       "sell_price": price, "image": v.get("variantImage", "")})
+        return out
+
     def get_product(self, pid: str) -> dict | None:
         data = self._request("GET", "/product/query", params={"pid": pid})
         if not data:
@@ -251,6 +269,18 @@ class MockCJClient:
                                      for i in range(1, 3)]
                 return product
         return None
+
+    def list_variants(self, pid: str) -> list[dict]:
+        product = self.get_product(pid)
+        if product is None:
+            return []
+        # deterministic synthetic color set so cross-listing color variations
+        # is demoable/testable in dry-run without a live multi-color product
+        colors = ["Green", "Blue", "Orange", "Cream"]
+        return [{"vid": f"{product['vid']}-{c.upper()}", "label": c,
+                "sell_price": product["sell_price"],
+                "image": f"https://mock.cjimg.example/{pid}/{c.lower()}.jpg"}
+               for c in colors]
 
     def freight_calculate(self, vid: str, quantity: int, country: str = "US") -> dict:
         pid = next((p["pid"] for p in self._catalog if p["vid"] == vid), None)
