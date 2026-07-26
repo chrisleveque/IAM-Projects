@@ -23,9 +23,11 @@ app = typer.Typer(
 approvals_app = typer.Typer(help="Review and execute proposed actions.", no_args_is_help=True)
 orders_app = typer.Typer(help="Order pipeline.", no_args_is_help=True)
 products_app = typer.Typer(help="Product pipeline.", no_args_is_help=True)
+cj_app = typer.Typer(help="Direct CJ Dropshipping catalog lookups.", no_args_is_help=True)
 app.add_typer(approvals_app, name="approvals")
 app.add_typer(orders_app, name="orders")
 app.add_typer(products_app, name="products")
+app.add_typer(cj_app, name="cj")
 
 console = Console()
 
@@ -202,6 +204,31 @@ def run(pipeline: str = typer.Argument("daily", help="Pipeline to run (only: dai
         console.print(Panel(f"[bold]{summary['pending_approvals']} action(s) now pending "
                             "approval[/bold] — run [cyan]shopagent approvals list[/cyan]",
                             style="yellow"))
+
+
+@cj_app.command("variants")
+def cj_variants(pid: str = typer.Argument(..., help="CJ product id (pid)")) -> None:
+    """List every color/size variant of a CJ product, each with its own vid.
+
+    Use this to get per-color SKUs for a multi-variant listing (e.g. an Amazon
+    color variation family) so every option maps back to its own CJ variant
+    for automated fulfillment, instead of only the first/default one."""
+    cfg = _cfg()
+    _mode_banner(cfg)
+    from .integrations.cj_client import make_cj_client
+    cj = make_cj_client(cfg)
+    variants = cj.list_variants(pid)
+    if not variants:
+        raise typer.Exit(code=_fail(f"no variants found for CJ product {pid!r}"))
+    table = Table(title=f"Variants for {pid}")
+    for col in ("label", "vid", "price"):
+        table.add_column(col)
+    for v in variants:
+        price = f"${v['sell_price']:.2f}" if v.get("sell_price") else ""
+        table.add_row(v["label"], v["vid"], price)
+    console.print(table)
+    console.print("[dim]use each vid as that color's SKU on Amazon/Shopify for "
+                  "automated fulfillment mapping[/dim]")
 
 
 @app.command()

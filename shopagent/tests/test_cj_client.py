@@ -112,6 +112,55 @@ def test_api_level_error_raises(tmp_path):
         client.search_products("pet")
 
 
+def test_list_variants_returns_all_not_just_first(tmp_path):
+    # get_product only ever surfaces variants[0]; list_variants must not
+    # drop the rest — this is the exact gap that broke multi-color listings
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/authentication/getAccessToken"):
+            return httpx.Response(200, json={"result": True,
+                                             "data": {"accessToken": "tok"}})
+        return httpx.Response(200, json={"result": True, "data": {
+            "pid": "P1", "productNameEn": "Lick Mat",
+            "variants": [
+                {"vid": "V-BLUE", "variantKey": "Color:Blue",
+                 "variantSellPrice": "10.85"},
+                {"vid": "V-GREEN", "variantKey": "Color:Green",
+                 "variantSellPrice": "10.85"},
+                {"vid": "V-TRANS", "variantNameEn": "Transparent",
+                 "variantSellPrice": "11.20"},
+                {"vid": "V-NOLABEL", "variantSellPrice": "10.85"},
+            ],
+        }})
+
+    client = _client_with(handler, tmp_path)
+    variants = client.list_variants("P1")
+    assert [v["vid"] for v in variants] == ["V-BLUE", "V-GREEN", "V-TRANS", "V-NOLABEL"]
+    assert variants[0]["label"] == "Color:Blue"
+    assert variants[2]["label"] == "Transparent"
+    assert variants[2]["sell_price"] == 11.20
+    assert variants[3]["label"] == "Variant 4"  # falls back when no label field
+
+
+def test_list_variants_unknown_product_returns_empty(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/authentication/getAccessToken"):
+            return httpx.Response(200, json={"result": True,
+                                             "data": {"accessToken": "tok"}})
+        return httpx.Response(200, json={"result": True, "data": {}})
+
+    client = _client_with(handler, tmp_path)
+    assert client.list_variants("NOPE") == []
+
+
+def test_mock_list_variants_gives_four_distinct_colors():
+    cj = MockCJClient()
+    variants = cj.list_variants("CJ-PET-001")
+    labels = [v["label"] for v in variants]
+    assert labels == ["Green", "Blue", "Orange", "Cream"]
+    vids = [v["vid"] for v in variants]
+    assert len(set(vids)) == 4  # every color gets a distinct vid
+
+
 def test_search_handles_variant_price_ranges(tmp_path):
     # the live catalog returns sellPrice as a range string when variants
     # differ in price — this crashed search entirely before
