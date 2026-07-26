@@ -143,12 +143,33 @@ The parent is the family container, not a product anyone buys:
 Each child then needs its own main image, and in the Offer section its own SKU
 (that color's vid), price, and quantity.
 
+**The parent also needs List Price and Fulfillment Channel**, even though nobody
+buys the parent directly. Amazon's form doesn't always surface these while
+you're building the family, and leaving them blank lands the entire listing in
+"Missing Information" after submission — with the children locked until the
+parent is fixed ("issues with your parent SKU ... need to be fixed before you
+can work on any child SKUs"). Set the parent's List Price to the same price as
+the children and its Fulfillment Channel to Merchant Fulfilled.
+
 ## Step 6 — After submitting
 
 Submission is asynchronous: "Pending additional checks" usually clears in
-minutes but can take up to 48 hours. If the listing later shows Inactive, the
-"Review blocked reason" link on it explains why — ask the user for a screenshot
-and fix from there.
+minutes but can take up to 48 hours. A successful submit does not mean a live
+listing — check **Manage All Inventory** afterward and expect to fix something.
+
+Common post-submit states:
+
+- **"Missing Information" / Complete drafts** — required fields are still
+  unfilled. Fix the parent SKU first if it's a variation family; children stay
+  locked until it's clean. Click "Add missing information" → "Edit Draft" to
+  see the flagged fields highlighted in red.
+- **"No image available" on every SKU** — images uploaded during the Variations
+  step didn't attach. The listing edit view has its own **Images** tab; re-add
+  them there.
+- **Inactive** — the "Review blocked reason" link explains why.
+
+Ask the user for a screenshot of whatever the listing reports rather than
+guessing at the cause; Amazon's error text names the specific fields.
 
 Then reconcile the listing into the local pipeline so order automation knows
 about it:
