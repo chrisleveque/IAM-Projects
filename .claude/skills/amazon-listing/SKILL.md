@@ -213,6 +213,20 @@ creating a duplicate.
   missing` — that error means the exemption isn't on file, not that the row
   is wrong. Selecting `GTIN Exempt` as the Product Id Type only claims the
   exemption; the account has to hold it.
+
+  For a generic/unbranded product the exemption is granted automatically by
+  walking the Add Products flow: Create a new listing → enter brand `Generic`
+  or tick "does not have a brand name" → check "I don't have a product ID" →
+  Next. The listing itself can be abandoned there; clicking through is what
+  triggers approval. **Then wait ~30 minutes before uploading** — approval is
+  instant but propagation is not, and uploading too soon fails with the same
+  missing-identifier error as having no exemption at all, so an application
+  that actually succeeded looks like it failed.
+
+  Exemptions attach to a category, so one granted while listing a pet feeder
+  may not cover a pet bed. If an upload fails on identifiers for a product in
+  a new category, re-run the flow for that category rather than assuming the
+  earlier approval carries over.
 - For automated order sync later, the SP-API app also needs the
   **Direct-to-Consumer Shipping** restricted role, which Amazon reviews by hand
   and can take days. Worth starting early even if API work is deferred.
