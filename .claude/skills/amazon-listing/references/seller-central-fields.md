@@ -119,3 +119,64 @@ unit dropdown left unset next to a filled numeric field.
 Battery answers change for powered products (a rechargeable nail grinder has an
 internal battery: required = Yes, included = Yes), which also triggers lithium
 battery questions. Answer those from the supplier's actual battery spec.
+
+## Bulk upload (Add products via upload)
+
+The interactive form cannot express a parent SKU without an offer, so a
+variation family submitted through it can dead-end in "Missing Information"
+with a List Price that never persists. The spreadsheet path handles this
+correctly and is the better tool for any multi-variant product.
+
+Getting the template: List Your Products → **Spreadsheet** → "List products
+that are not currently in Amazon's catalog" → Download Product Spreadsheet.
+Pick every product type you plan to list; one file can cover several.
+
+### Preparing the file
+
+The Template tab's data starts at **row 8**. Row 6 is Amazon's example row.
+
+**Expand all columns before reading the header row.** The default view hides
+column groups, and a header row copied while collapsed is missing entries —
+pasting data built from it drifts out of alignment partway across the sheet
+(one real case: 165 visible headers against 339 actual columns, so everything
+past the first hidden group landed in the wrong field). Click the **"2"**
+outline button at the top-left, then verify by checking that the column
+letters run consecutively.
+
+Expanding also reveals that several attributes repeat: **Bullet Point appears
+five times**, as do Special Features, Material, Pet Type, and Directions. Each
+repeat is one value.
+
+### Key columns
+
+| Column | Parent row | Child rows |
+|---|---|---|
+| `Parentage Level` | `Parent` | `Child` |
+| `Parent SKU` | *(blank)* | the parent's SKU |
+| `Variation Theme Name` | `Color` | `Color` |
+| **`Skip Offer`** | **`Yes`** | *(blank)* |
+| `Product Id Type` | *(blank)* | **`GTIN Exempt`** |
+| `Product Id` | *(blank)* | *(blank)* |
+| Price / Quantity / Fulfillment | *(none)* | filled |
+| `Fulfillment Channel Code (US)` | — | `DEFAULT` (merchant fulfilled) |
+
+`Skip Offer: Yes` is what makes the parent valid without a price — the single
+thing the web form gets wrong. `GTIN Exempt` is the file equivalent of the
+form's "does not have a Product ID" toggle.
+
+### Uploading
+
+Upload returns a **Preview file and fix errors** screen that validates every
+row and allows inline editing with proper dropdowns. Its "Focus on errors"
+toggle hides clean columns. Fixing errors here is far faster than editing the
+spreadsheet and re-uploading — and its dropdowns show the exact accepted
+values, which is the reliable way to resolve select-from-list attributes
+(Breed Recommendation, Specific Uses for Product) rather than guessing.
+
+### Images
+
+Images are **not** part of the spreadsheet. Create the products first, then
+upload images at `sellercentral.amazon.com/imaging/upload`, naming each file
+`<SKU>.MAIN.jpg` (additional views `.PT01`–`.PT08`, swatch `.SWCH`). The
+filename is the only thing linking an image to its SKU there. Main images
+still need the product filling 85%+ of a pure-white frame.
