@@ -103,6 +103,17 @@ demoralizing. Leaving the "Save product details for future listings" toggle on
 also carries some fields into the next product, which helps a lot on products
 two and three.
 
+The same applies when fixing a draft later: the edit view's tabs (Product
+Identity / Product Details / Variations / Offer / Images) **discard unsaved
+edits when you switch tabs**. A field can look filled, then be empty again when
+you come back, which reads like "it won't save." Fill a tab, click "Save and
+finish", and only then move on.
+
+When a tab shows an error and it isn't obvious which field is at fault, switch
+the left sidebar's Attributes filter from "Recommended" to **"Required"**. That
+collapses the form to only the mandatory fields, which usually makes the gap
+obvious in seconds instead of scrolling a long form hunting for red.
+
 ## Step 4 — Write the listing copy
 
 Draft this before the user reaches the Description section so they can paste it
