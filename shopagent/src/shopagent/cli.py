@@ -327,6 +327,38 @@ def _seed_mock_inbox(cfg: AppConfig) -> None:
         (inbox / name).write_text(content, encoding="utf-8")
 
 
+@app.command()
+def serve(host: str = typer.Option("127.0.0.1", "--host",
+                                   help="Bind address; 0.0.0.0 exposes it on your LAN"),
+          port: int = typer.Option(8787, "--port")) -> None:
+    """Serve the HTTP API so an external automation (n8n, a phone) can read the
+    pipeline and act on approvals.
+
+    Requires SHOPAGENT_API_TOKEN. Binds to localhost by default — put a tunnel
+    in front of it rather than opening a port, and never expose it untokened.
+    """
+    token = os.environ.get("SHOPAGENT_API_TOKEN", "")
+    if not token:
+        raise typer.Exit(code=_fail(
+            "SHOPAGENT_API_TOKEN is not set. This API can place supplier "
+            "orders and email customers, so it will not start without one.\n"
+            "Add a long random string to your .env:\n"
+            "  SHOPAGENT_API_TOKEN=<paste 32+ random characters>"))
+    try:
+        import uvicorn
+    except ModuleNotFoundError:
+        raise typer.Exit(code=_fail(
+            "the API needs fastapi and uvicorn; install them with:\n"
+            "  pip install -e .[api]"))
+    cfg = _cfg()
+    _mode_banner(cfg)
+    from .api import create_app
+    console.print(f"serving on http://{host}:{port}  (docs at /docs)")
+    console.print("[dim]attach only the GET endpoints as agent tools — "
+                  "approve/reject should be a human tap[/dim]")
+    uvicorn.run(create_app(cfg, token), host=host, port=port)
+
+
 # ------------------------------------------------------------------ approvals
 
 @approvals_app.command("list")
