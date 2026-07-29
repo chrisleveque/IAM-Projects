@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+api = ["fastapi>=0.110", "uvicorn>=0.30"]
+dev = ["pytest>=8.0", "fastapi>=0.110", "uvicorn>=0.30"]
 
 [project.scripts]
 shopagent = "shopagent.cli:app"

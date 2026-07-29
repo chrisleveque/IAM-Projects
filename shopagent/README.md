@@ -33,9 +33,13 @@ you approve it.**
 Agents have **no tools that can change anything external**. Their only write
 path is `propose_action`, which files a pending row in the approval queue with
 the exact payload, a one-line title, and the agent's rationale. A separate
-executor — invoked only by `shopagent approvals approve <id>` — performs
-approved actions against the real APIs. A misbehaving prompt cannot bypass the
-gate, because the gate is structural, not instructional.
+executor — invoked by `shopagent approvals approve <id>`, or by the equivalent
+HTTP endpoint if you run `shopagent serve` — performs approved actions against
+the real APIs. A misbehaving prompt cannot bypass the gate, because the gate is
+structural, not instructional.
+
+The one way to give that structure away is to hand an LLM the approve endpoint
+as a tool. See [Remote control from your phone](#remote-control-from-your-phone-n8n).
 
 What executes what:
 
@@ -243,6 +247,79 @@ carrier code — when CJ hands off to USPS/UPS last-mile, prefer that code.
   marks blocked listings with notes.
 - The Orders API is rate-limited to ~1 call/minute — sync once, don't hammer.
 
+## Remote control from your phone (n8n)
+
+`shopagent serve` exposes the pipeline over HTTP so an external automation —
+n8n, a phone shortcut, a cron job — can see what the agents have proposed and
+act on it without you being at your desk.
+
+```bash
+pip install -e .[api]
+# add SHOPAGENT_API_TOKEN to .env first (see .env.example)
+shopagent serve                 # http://127.0.0.1:8787, docs at /docs
+```
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Liveness. The only unauthenticated route; reveals nothing |
+| `GET` | `/status` | Modes, pending count, product/order counts, recent runs |
+| `GET` | `/approvals?status=pending` | Queue summaries (no payloads) |
+| `GET` | `/approvals/{id}` | One approval in full, including the exact payload |
+| `GET` | `/products?status=` | Product pipeline |
+| `GET` | `/orders?status=&channel=` | Order pipeline, filterable by channel |
+| `POST` | `/approvals/{id}/approve` | Approve **and execute** |
+| `POST` | `/approvals/{id}/reject` | Reject, optional `{"note": "..."}` |
+| `POST` | `/approvals/{id}/retry` | Re-execute a failed action |
+
+Every route except `/health` requires `Authorization: Bearer $SHOPAGENT_API_TOKEN`.
+
+### Keeping the approval gate real
+
+There is deliberately **no endpoint that creates an approval**. Proposals only
+come from agents running locally, so a network caller can read the pipeline and
+decide on existing proposals — nothing more.
+
+That leaves one way to lose the gate, and it is worth being blunt about:
+**do not attach the POST endpoints as tools an LLM can call.** An agent holding
+`approve` will eventually approve something on its own, and a system prompt
+saying "confirm first" is a request, not a control. The GET endpoints are safe
+as agent tools — reading is harmless. Decisions should come from you tapping a
+button.
+
+A workable n8n shape:
+
+- **Agent tools** — HTTP Request nodes for `/status`, `/approvals`,
+  `/approvals/{id}`, `/products`, `/orders`. Now you can ask "what's waiting on
+  me?" from your phone and get a real answer.
+- **Notification** — a scheduled workflow that polls `/approvals` and messages
+  you (Telegram, email, push) when the pending count is above zero.
+- **Decision** — buttons in that message hitting `/approvals/{id}/approve` or
+  `/reject`. The tap is the gate.
+
+Store the token in n8n as a **Header Auth** credential (name
+`Authorization`, value `Bearer <token>`) rather than pasting it into each node.
+
+### Exposing it to n8n Cloud
+
+n8n Cloud runs on the internet and cannot reach `127.0.0.1` on your PC. You
+need a tunnel, and your PC has to be awake for any of this to work:
+
+```bash
+cloudflared tunnel --url http://localhost:8787
+```
+
+That prints a public `https://<random>.trycloudflare.com` URL — use it as the
+base URL in n8n. Quick tunnels get a new URL each restart; a named tunnel gives
+you a stable hostname once you have a domain.
+
+Keep `--host 127.0.0.1` (the default) and let the tunnel reach in. Binding
+`0.0.0.0` puts the API on your local network, and port-forwarding it puts your
+store's controls on the open internet behind one shared secret.
+
+If your PC being on is a dealbreaker, the alternative is hosting shopagent on a
+small always-on box (a $5 VPS, a Raspberry Pi) instead of tunneling your
+desktop.
+
 ## Configuration reference (`config.yaml`)
 
 | Key | Meaning |
@@ -263,6 +340,7 @@ src/shopagent/
 ├── cli.py            # all commands
 ├── config.py         # config.yaml + .env loading, mode resolution
 ├── store.py          # SQLite: products, orders, approvals, agent_runs
+├── api.py            # HTTP API for n8n/phone: reads + approval decisions
 ├── executor.py       # the ONLY code that performs external actions
 ├── orchestrator.py   # deterministic daily pipeline
 ├── ai/client.py      # Anthropic wrapper + manual tool-use loop
