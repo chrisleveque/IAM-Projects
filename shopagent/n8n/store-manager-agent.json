@@ -1,0 +1,219 @@
+{
+  "name": "Store Manager Agent",
+  "nodes": [
+    {
+      "id": "26dbf26a-7c3f-404d-bfd7-e413f10c68f7",
+      "name": "Store Manager Chat",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [0, 112],
+      "webhookId": "b133c70b-72b3-47d7-9685-07f3fe370b43",
+      "parameters": {
+        "public": false,
+        "options": {
+          "responseMode": "streaming",
+          "inputPlaceholder": "What's waiting on me? Show pending approvals, orders, or products..."
+        }
+      }
+    },
+    {
+      "id": "0f8befdd-2b27-4e14-ace9-fc5232dd75ef",
+      "name": "Store Manager",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [608, 112],
+      "parameters": {
+        "promptType": "auto",
+        "options": {
+          "systemMessage": "You are the Store Manager, a read-only operations assistant for FurrFlow, a pet-niche dropshipping business selling on Shopify and Amazon, sourced from CJ Dropshipping.\n\nYou are a window into the shopagent pipeline running on the operator's machine. Everything you can see comes from its HTTP API:\n\n- get_status: modes, how many actions await approval, product and order counts by status, recent agent runs. Start here when asked an open question like \"what's going on\" or \"what needs me\".\n- list_approvals: actions the local agents have proposed. Default status is pending; pass 'all', 'approved', 'executed', 'failed', or 'rejected' to see others.\n- get_approval: one approval in full, including the exact payload that would execute. Use this before summarizing anything the operator might act on — the list view deliberately omits payloads.\n- list_products: the product pipeline (candidate, shortlisted, drafted, listed, rejected).\n- list_orders: the order pipeline, filterable by status and by channel ('shopify' or 'amazon').\n\nWhat you cannot do, and must not imply otherwise:\n\n- You cannot approve, reject, or retry anything. That is deliberate. Every proposed action spends real money, ships real product, or emails a real customer, so a human decides — never an agent. If asked to approve something, say plainly that you can't and tell the operator to run `shopagent approvals approve <id>` or use the approve button.\n- You cannot create products, edit listings, change prices, place supplier orders, or touch the code repository.\n- You cannot see anything outside the pipeline: no live Shopify admin, no Amazon Seller Central, no CJ catalog browsing.\n\nHow to be useful:\n\n- Lead with what needs the operator's attention. \"3 pending approvals, 2 orders stuck in attention\" beats a wall of JSON.\n- When summarizing a pending approval, fetch its detail and state the specifics that matter for a decision: what it will do, to which product or order, at what price, and the agent's rationale. Flag anything that looks off — a thin margin, a price that doesn't match the pipeline, a missing tracking number.\n- Always include ids (approval #, product id, order id) so the operator can act without hunting.\n- Be concise. The operator is often reading this on a phone.\n- If a tool call fails, say so and what it means. A connection error means the shopagent server or the tunnel isn't running on their PC — say that rather than guessing at the data.\n- Never invent pipeline data. If a tool didn't return it, you don't know it."
+        }
+      }
+    },
+    {
+      "id": "1dc65ad1-a93e-4cf9-ad78-c239f8e9e11f",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.5,
+      "position": [224, 336],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-6",
+          "cachedResultName": "Claude Sonnet 4.6"
+        }
+      }
+    },
+    {
+      "id": "30136c31-046b-43b6-b00c-61b022eda382",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [352, 336],
+      "parameters": {
+        "sessionIdType": "fromInput",
+        "contextWindowLength": 15
+      }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "get_status",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [480, 336],
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "toolDescription": "Get an overview of the shopagent pipeline: which integrations are live or mocked, how many actions are awaiting approval, product counts by status, order counts by status, and the most recent agent runs. Takes no parameters. Use this first for open-ended questions about the state of the business."
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ON_IMPORT",
+          "name": "shopagent API"
+        }
+      }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "list_approvals",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [608, 336],
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/approvals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "status"
+            }
+          ]
+        },
+        "toolDescription": "List actions the local agents have proposed and that are waiting on a human decision. The optional 'status' parameter is one of: pending (the default), approved, executed, failed, rejected, or 'all' for every row. Returns summaries only — call get_approval for the full payload of any specific one."
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ON_IMPORT",
+          "name": "shopagent API"
+        }
+      }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "get_approval",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [736, 336],
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/approval",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "id"
+            }
+          ]
+        },
+        "toolDescription": "Get one proposed action in full by its numeric id, including the exact payload that would execute, the agent's rationale, and which product or order it is linked to. Required parameter: id (the approval number shown by list_approvals). Use this before describing an action the operator might approve — the list view omits payloads on purpose."
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ON_IMPORT",
+          "name": "shopagent API"
+        }
+      }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "list_products",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [864, 336],
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "status"
+            }
+          ]
+        },
+        "toolDescription": "List products in the pipeline with their supplier cost, proposed price, Shopify id, Amazon SKU and Amazon listing status. The optional 'status' parameter filters to one of: candidate, shortlisted, drafted, listed, rejected. Omit it to see everything."
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ON_IMPORT",
+          "name": "shopagent API"
+        }
+      }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "list_orders",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [992, 336],
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/orders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "status"
+            },
+            {
+              "name": "channel"
+            }
+          ]
+        },
+        "toolDescription": "List orders with their customer, line items, CJ supplier order id and tracking number. Optional 'status' is one of: new, cj_proposed, cj_placed, shipped, delivered, attention. Optional 'channel' is 'shopify' or 'amazon'. Orders in 'attention' are the ones that need a human to look."
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ON_IMPORT",
+          "name": "shopagent API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Store Manager Chat": {
+      "main": [[{ "node": "Store Manager", "type": "main", "index": 0 }]]
+    },
+    "Claude": {
+      "ai_languageModel": [[{ "node": "Store Manager", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Conversation Memory": {
+      "ai_memory": [[{ "node": "Store Manager", "type": "ai_memory", "index": 0 }]]
+    },
+    "get_status": {
+      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+    },
+    "list_approvals": {
+      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+    },
+    "get_approval": {
+      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+    },
+    "list_products": {
+      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+    },
+    "list_orders": {
+      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "availableInMCP": true
+  },
+  "pinData": {}
+}

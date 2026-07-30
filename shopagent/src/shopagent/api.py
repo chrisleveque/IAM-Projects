@@ -148,8 +148,7 @@ def create_app(cfg: AppConfig | None = None, token: str = "") -> FastAPI:
         finally:
             store.close()
 
-    @app.get("/approvals/{approval_id}", dependencies=auth)
-    def get_approval(approval_id: int) -> dict:
+    def _detail_or_404(approval_id: int) -> dict:
         store = open_store()
         try:
             approval = store.get_approval(approval_id)
@@ -159,6 +158,20 @@ def create_app(cfg: AppConfig | None = None, token: str = "") -> FastAPI:
             return _approval_detail(approval)
         finally:
             store.close()
+
+    @app.get("/approvals/{approval_id}", dependencies=auth)
+    def get_approval(approval_id: int) -> dict:
+        return _detail_or_404(approval_id)
+
+    @app.get("/approval", dependencies=auth)
+    def get_approval_by_query(id: int = Query(..., description="Approval id")) -> dict:
+        """Same as GET /approvals/{id}, with the id as a query parameter.
+
+        n8n's HTTP Request Tool fills query parameters reliably but its URL
+        placeholder mechanism has been unstable across versions, so a tool node
+        can point here and let the model supply ?id= instead.
+        """
+        return _detail_or_404(id)
 
     @app.get("/products", dependencies=auth)
     def list_products(status: Optional[str] = Query(None)) -> dict:

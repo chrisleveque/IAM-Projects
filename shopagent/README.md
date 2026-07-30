@@ -286,6 +286,22 @@ saying "confirm first" is a request, not a control. The GET endpoints are safe
 as agent tools — reading is harmless. Decisions should come from you tapping a
 button.
 
+### The ready-made workflow
+
+`n8n/store-manager-agent.json` is a chat agent wired to the five GET endpoints,
+importable via **Workflows → Import from File**. After importing:
+
+1. Replace `REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com` with your own host in
+   all five tool nodes.
+2. Select your Header Auth credential on each tool node (the export references
+   it by name, not by id, so n8n cannot resolve it automatically).
+
+`tests/test_n8n_workflow.py` checks that file against the API on every test
+run: every URL is a real route, every query parameter is one the route accepts,
+the values listed in each tool description are values the API actually takes,
+and — the one that matters — **no tool points at an endpoint that can change
+anything**. Adding an approve tool fails the suite.
+
 A workable n8n shape:
 
 - **Agent tools** — HTTP Request nodes for `/status`, `/approvals`,

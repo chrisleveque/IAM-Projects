@@ -108,6 +108,17 @@ def test_missing_approval_is_404(client, seeded):
     assert client.get("/approvals/999", headers=AUTH).status_code == 404
 
 
+def test_approval_detail_by_query_param_matches_the_rest_route(client, seeded):
+    """n8n tool nodes fill query params reliably; URL placeholders don't."""
+    by_path = client.get("/approvals/1", headers=AUTH)
+    by_query = client.get("/approval?id=1", headers=AUTH)
+    assert by_query.status_code == 200
+    assert by_query.json() == by_path.json()
+    assert client.get("/approval?id=999", headers=AUTH).status_code == 404
+    assert client.get("/approval", headers=AUTH).status_code == 422  # id required
+    assert client.get("/approval?id=abc", headers=AUTH).status_code == 422
+
+
 def test_products_and_orders_are_readable_and_validated(client, seeded):
     products = client.get("/products", headers=AUTH).json()
     assert products["count"] == 1
