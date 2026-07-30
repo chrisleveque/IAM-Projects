@@ -145,6 +145,8 @@ def doctor() -> None:
          "Amazon SP-API self-authorization"),
         ("AMZ_SELLER_ID", bool(os.environ.get("AMZ_SELLER_ID")),
          "Seller Central merchant token"),
+        ("SHOPAGENT_API_TOKEN", bool(os.environ.get("SHOPAGENT_API_TOKEN")),
+         "only needed for `shopagent serve`"),
     ]
     for name, ok, why in checks:
         mark = "[green]set[/green]" if ok else "[yellow]missing[/yellow]"
@@ -337,20 +339,24 @@ def serve(host: str = typer.Option("127.0.0.1", "--host",
     Requires SHOPAGENT_API_TOKEN. Binds to localhost by default — put a tunnel
     in front of it rather than opening a port, and never expose it untokened.
     """
+    # load config FIRST: it is what reads .env, and the token normally lives
+    # there rather than in the shell environment
+    cfg = _cfg()
     token = os.environ.get("SHOPAGENT_API_TOKEN", "")
     if not token:
         raise typer.Exit(code=_fail(
             "SHOPAGENT_API_TOKEN is not set. This API can place supplier "
             "orders and email customers, so it will not start without one.\n"
-            "Add a long random string to your .env:\n"
-            "  SHOPAGENT_API_TOKEN=<paste 32+ random characters>"))
+            f"Add a long random string to {cfg.root / '.env'}:\n"
+            "  SHOPAGENT_API_TOKEN=<paste 32+ random characters>\n"
+            "Generate one with:\n"
+            '  python -c "import secrets; print(secrets.token_urlsafe(32))"'))
     try:
         import uvicorn
     except ModuleNotFoundError:
         raise typer.Exit(code=_fail(
             "the API needs fastapi and uvicorn; install them with:\n"
             "  pip install -e .[api]"))
-    cfg = _cfg()
     _mode_banner(cfg)
     from .api import create_app
     console.print(f"serving on http://{host}:{port}  (docs at /docs)")
