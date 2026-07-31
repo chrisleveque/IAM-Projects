@@ -165,8 +165,17 @@ def _licence_slug(url: str) -> str:
     return ""
 
 
+PLACEHOLDER_MARKER = "placeholder"
+
+
 class MockMusicClient:
-    """Deterministic offline catalogue so renders and tests need no network."""
+    """Deterministic offline catalogue so renders and tests need no network.
+
+    Downloads produce an audible synthesized loop, not silence: a silent bed
+    once shipped in a sample and read as "the audio is broken" — the pacing of
+    an ad can't be judged without sound. Every track is labeled as a
+    placeholder so nobody posts one thinking it's licensed music.
+    """
 
     def __init__(self):
         self.downloads: list[tuple[str, Path]] = []
@@ -179,27 +188,52 @@ class MockMusicClient:
             score = sum(1 for w in words if w in haystack)
             scored.append((score, track))
         scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
-        return [dict(track) for _, track in scored[:limit]]
+        out = []
+        for _, track in scored[:limit]:
+            track = dict(track)
+            track["title"] += " [placeholder — set JAMENDO_CLIENT_ID for real music]"
+            track["license"] = "placeholder tone, not licensed music"
+            out.append(track)
+        return out
 
     def download(self, track: dict, dest: Path) -> Path:
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        # a real, playable silent WAV so the renderer can be exercised offline
-        dest.write_bytes(_silent_wav(seconds=min(30, track.get("duration") or 20)))
+        dest.write_bytes(_placeholder_wav(seconds=min(30, track.get("duration") or 20),
+                                          seed=hash(track.get("id", "")) % 4))
         self.downloads.append((track["id"], dest))
         return dest
 
 
-def _silent_wav(seconds: int = 20, rate: int = 44100) -> bytes:
-    """Minimal 16-bit mono silent WAV — enough for ffmpeg to treat as audio."""
+def _placeholder_wav(seconds: int = 20, rate: int = 22050, seed: int = 0) -> bytes:
+    """A quiet synthesized chord loop as 16-bit mono WAV.
+
+    Pure-Python sine mixing — no numpy, and at 22.05kHz a 20s bed builds in
+    well under a second. Four bars of two alternating soft chords with a gentle
+    tremolo, at low gain so it sits like background music rather than a test
+    tone. ``seed`` shifts the root note so different tracks sound different.
+    """
+    import math
     import struct
 
+    root = 220.0 * (2 ** (seed / 12))  # A3 shifted up `seed` semitones
+    chords = ([1.0, 5 / 4, 3 / 2], [9 / 8, 4 / 3, 5 / 3])  # I and ii-ish
     frames = rate * max(1, seconds)
-    data_size = frames * 2
+    bar = rate * 2  # two seconds per chord
+    samples = bytearray()
+    for n in range(frames):
+        chord = chords[(n // bar) % 2]
+        # soften chord changes with a short attack at each bar boundary
+        envelope = min(1.0, (n % bar) / (rate * 0.05))
+        tremolo = 0.85 + 0.15 * math.sin(2 * math.pi * 3.0 * n / rate)
+        value = sum(math.sin(2 * math.pi * root * ratio * n / rate) for ratio in chord)
+        sample = int(3000 * envelope * tremolo * value / len(chord))
+        samples += struct.pack("<h", max(-32767, min(32767, sample)))
+    data_size = len(samples)
     header = b"RIFF" + struct.pack("<I", 36 + data_size) + b"WAVE"
     header += b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
     header += b"data" + struct.pack("<I", data_size)
-    return header + b"\x00" * data_size
+    return bytes(header + samples)
 
 
 def make_music_client(cfg: AppConfig):

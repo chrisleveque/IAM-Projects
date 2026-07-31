@@ -182,23 +182,45 @@ class Executor:
                 track = results[0]
                 music_path = self.music.download(track, work / "bed.mp3")
 
+        voice_path = None
+        voice_note = ""
+        if video_cfg.voiceover:
+            from .video.voice import VoiceError, script_to_speech_text, synthesize
+            try:
+                voice_path = synthesize(script_to_speech_text(p["script"]),
+                                        work / "voice.mp3")
+            except VoiceError as exc:
+                # a broken voice must not cost the render; note it and move on
+                voice_note = f"voiceover skipped: {exc}"
+
         out_path = render_slideshow(
             images, Script.from_dict(p["script"]), out_dir / f"{stamp}_{slug}.mp4",
-            music_path=music_path,
+            music_path=music_path, voice_path=voice_path,
             width=video_cfg.width, height=video_cfg.height, fps=video_cfg.fps,
             seconds_per_shot=video_cfg.seconds_per_shot,
             max_seconds=video_cfg.max_seconds, music_volume=video_cfg.music_volume,
             font_size_hook=video_cfg.font_size_hook,
             font_size_caption=video_cfg.font_size_caption,
+            brand_name=video_cfg.brand_name, accent_color=video_cfg.accent_color,
+            transition_seconds=video_cfg.transition_seconds,
+            end_card_seconds=video_cfg.end_card_seconds,
             work_dir=work)
 
         self.store.update_product(int(p["product_id"]),
                                   tiktok_status="rendered",
                                   video_path=str(out_path))
         result = {"video_path": str(out_path), "shots": len(images)}
+        if voice_note:
+            result["voiceover"] = voice_note
+        elif voice_path:
+            result["voiceover"] = "synthesized (experimental edge-tts)"
         if track:
             result["music"] = {"title": track["title"], "artist": track["artist"],
                                "license": track["license"]}
+            if "placeholder" in track["license"]:
+                result["music"]["note"] = (
+                    "placeholder tone, not real music — set JAMENDO_CLIENT_ID "
+                    "(free at devportal.jamendo.com) for licensed tracks")
             # the bed is safe to render; it is not what makes a paid ad safe
             result["before_posting"] = (
                 "Swap in a track from TikTok's Commercial Music Library before "

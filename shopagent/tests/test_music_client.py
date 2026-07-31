@@ -149,8 +149,12 @@ def test_download_failure_raises(tmp_path):
 def test_mock_search_is_deterministic_and_query_sensitive():
     cj = MockMusicClient()
     assert cj.search("cozy sleep") == MockMusicClient().search("cozy sleep")
-    assert cj.search("cozy sleep bed")[0]["title"] == "Soft Lo-Fi Cuddle"
-    assert cj.search("viral punchy beat")[0]["title"] == "Deep House Scroll"
+    assert cj.search("cozy sleep bed")[0]["title"].startswith("Soft Lo-Fi Cuddle")
+    assert cj.search("viral punchy beat")[0]["title"].startswith("Deep House Scroll")
+    # every mock track must be unmistakably a placeholder, not postable music
+    for track in cj.search("anything"):
+        assert "placeholder" in track["title"].lower()
+        assert "placeholder" in track["license"].lower()
 
 
 def test_mock_search_respects_limit():
