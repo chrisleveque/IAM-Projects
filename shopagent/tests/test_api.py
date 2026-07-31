@@ -128,6 +128,33 @@ def test_products_and_orders_are_readable_and_validated(client, seeded):
     assert client.get("/orders", headers=AUTH).json()["count"] == 0
 
 
+def test_videos_lists_only_rendered_products(client, seeded):
+    assert client.get("/videos", headers=AUTH).json()["count"] == 0
+    seeded.update_product(1, tiktok_status="rendered",
+                          video_path="/out/video/20260731_lick-mat.mp4")
+    body = client.get("/videos", headers=AUTH).json()
+    assert body["count"] == 1
+    assert body["videos"][0]["video_path"].endswith("lick-mat.mp4")
+    assert body["videos"][0]["tiktok_status"] == "rendered"
+    # the licensing caveat has to travel with the data, not live only in docs
+    assert "Commercial Music Library" in body["before_posting"]
+
+
+def test_trends_endpoint_reads_and_filters(client, seeded):
+    seeded.upsert_trend("#dogtok", kind="hashtag", metric="41.2B views",
+                        source="creative-center")
+    seeded.upsert_trend("Before/after", kind="format", source="creative-center")
+    assert client.get("/trends", headers=AUTH).json()["count"] == 2
+    hashtags = client.get("/trends?kind=hashtag", headers=AUTH).json()
+    assert hashtags["count"] == 1
+    assert hashtags["trends"][0]["metric"] == "41.2B views"
+
+
+def test_trends_limit_is_bounded(client, seeded):
+    assert client.get("/trends?limit=0", headers=AUTH).status_code == 422
+    assert client.get("/trends?limit=500", headers=AUTH).status_code == 422
+
+
 def test_orders_filter_by_channel(client, cfg, seeded):
     seeded.upsert_order("SHOP-1", channel="shopify", order_number="#1001")
     seeded.upsert_order("111-2233445-6677889", channel="amazon", order_number="AMZ-1")

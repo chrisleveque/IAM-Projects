@@ -11,7 +11,9 @@ from shopagent.ai.client import ToolRunResult
 from shopagent.config import AppConfig
 from shopagent.integrations.amazon_client import MockAmazonClient
 from shopagent.integrations.cj_client import MockCJClient
+from shopagent.integrations.music_client import MockMusicClient
 from shopagent.integrations.shopify_client import MockShopifyClient
+from shopagent.integrations.tiktok_client import MockTikTokClient
 from shopagent.store import Store
 
 
@@ -79,3 +81,13 @@ def cj() -> MockCJClient:
 @pytest.fixture
 def amazon() -> MockAmazonClient:
     return MockAmazonClient()
+
+
+@pytest.fixture
+def music() -> MockMusicClient:
+    return MockMusicClient()
+
+
+@pytest.fixture
+def tiktok() -> MockTikTokClient:
+    return MockTikTokClient()

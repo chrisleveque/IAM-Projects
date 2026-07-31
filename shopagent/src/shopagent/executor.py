@@ -12,18 +12,22 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .config import AppConfig
 from .store import Approval, Store
 
 
 class Executor:
-    def __init__(self, store: Store, cfg: AppConfig, shopify, cj, amazon=None):
+    def __init__(self, store: Store, cfg: AppConfig, shopify, cj, amazon=None,
+                 music=None, tiktok=None):
         self.store = store
         self.cfg = cfg
         self.shopify = shopify
         self.cj = cj
         self.amazon = amazon
+        self.music = music
+        self.tiktok = tiktok
         self._dispatch = {
             "shopify.create_product": self._shopify_create_product,
             "shopify.update_product": self._shopify_update_product,
@@ -32,6 +36,8 @@ class Executor:
             "amazon.update_price": self._amazon_update_price,
             "amazon.confirm_shipment": self._amazon_confirm_shipment,
             "cj.create_order": self._cj_create_order,
+            "tiktok.render_video": self._tiktok_render_video,
+            "tiktok.upload_draft": self._tiktok_upload_draft,
             "support.send_reply": self._support_send_reply,
             "marketing.publish": self._marketing_publish,
         }
@@ -135,6 +141,82 @@ class Executor:
         if approval.ref_table == "orders" and approval.ref_id:
             self.store.update_order(approval.ref_id,
                                     cj_order_id=result["cj_order_id"], status="cj_placed")
+        return result
+
+    # ------------------------------------------------------------- tiktok
+
+    def _tiktok_render_video(self, approval: Approval) -> dict:
+        """Render a vertical ad from the product's supplier photos.
+
+        Rendering is deliberately not gated on any TikTok credential — the mp4
+        lands in output/video/ and can be uploaded by hand. Uploading to drafts
+        is a separate, optional action.
+        """
+        from .video.render import Script, fetch_images, render_slideshow
+
+        p = approval.payload
+        product = self.store.get_product(int(p["product_id"]))
+        if product is None:
+            raise ValueError(f"no product with id {p['product_id']}")
+        image_urls = p.get("image_urls") or json.loads(product["images_json"] or "[]")
+        if not image_urls:
+            raise ValueError(
+                f"product {product['name']!r} has no saved photos to build a video "
+                "from; run `shopagent products import` to attach supplier images")
+
+        video_cfg = self.cfg.video
+        slug = re.sub(r"[^a-z0-9]+", "-", product["name"].lower()).strip("-")[:50]
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        out_dir = self.cfg.output_dir / "video"
+        work = out_dir / f".{stamp}_{slug}_work"
+        images = fetch_images(image_urls, work / "img")
+        if not images:
+            raise ValueError("every product image failed to download")
+
+        music_path = None
+        track = None
+        query = p.get("music_query", "")
+        if query and self.music is not None:
+            results = self.music.search(query, limit=5)
+            if results:
+                track = results[0]
+                music_path = self.music.download(track, work / "bed.mp3")
+
+        out_path = render_slideshow(
+            images, Script.from_dict(p["script"]), out_dir / f"{stamp}_{slug}.mp4",
+            music_path=music_path,
+            width=video_cfg.width, height=video_cfg.height, fps=video_cfg.fps,
+            seconds_per_shot=video_cfg.seconds_per_shot,
+            max_seconds=video_cfg.max_seconds, music_volume=video_cfg.music_volume,
+            font_size_hook=video_cfg.font_size_hook,
+            font_size_caption=video_cfg.font_size_caption,
+            work_dir=work)
+
+        self.store.update_product(int(p["product_id"]),
+                                  tiktok_status="rendered",
+                                  video_path=str(out_path))
+        result = {"video_path": str(out_path), "shots": len(images)}
+        if track:
+            result["music"] = {"title": track["title"], "artist": track["artist"],
+                               "license": track["license"]}
+            # the bed is safe to render; it is not what makes a paid ad safe
+            result["before_posting"] = (
+                "Swap in a track from TikTok's Commercial Music Library before "
+                "running this as an ad or posting from a Business account.")
+        return result
+
+    def _tiktok_upload_draft(self, approval: Approval) -> dict:
+        if self.tiktok is None:
+            raise RuntimeError(
+                "TikTok client not configured; the rendered video is still in "
+                "output/video/ and can be uploaded from the app by hand")
+        p = approval.payload
+        path = Path(p["video_path"])
+        if not path.exists():
+            raise ValueError(f"video not found: {path}")
+        result = self.tiktok.upload_draft(path, p["caption"])
+        if approval.ref_table == "products" and approval.ref_id:
+            self.store.update_product(approval.ref_id, tiktok_status="uploaded")
         return result
 
     def _support_send_reply(self, approval: Approval) -> dict:

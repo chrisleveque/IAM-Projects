@@ -6,7 +6,10 @@
       "name": "Store Manager Chat",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
-      "position": [0, 112],
+      "position": [
+        0,
+        112
+      ],
       "webhookId": "b133c70b-72b3-47d7-9685-07f3fe370b43",
       "parameters": {
         "public": false,
@@ -21,11 +24,14 @@
       "name": "Store Manager",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
-      "position": [608, 112],
+      "position": [
+        608,
+        112
+      ],
       "parameters": {
         "promptType": "auto",
         "options": {
-          "systemMessage": "You are the Store Manager, a read-only operations assistant for FurrFlow, a pet-niche dropshipping business selling on Shopify and Amazon, sourced from CJ Dropshipping.\n\nYou are a window into the shopagent pipeline running on the operator's machine. Everything you can see comes from its HTTP API:\n\n- get_status: modes, how many actions await approval, product and order counts by status, recent agent runs. Start here when asked an open question like \"what's going on\" or \"what needs me\".\n- list_approvals: actions the local agents have proposed. Default status is pending; pass 'all', 'approved', 'executed', 'failed', or 'rejected' to see others.\n- get_approval: one approval in full, including the exact payload that would execute. Use this before summarizing anything the operator might act on — the list view deliberately omits payloads.\n- list_products: the product pipeline (candidate, shortlisted, drafted, listed, rejected).\n- list_orders: the order pipeline, filterable by status and by channel ('shopify' or 'amazon').\n\nWhat you cannot do, and must not imply otherwise:\n\n- You cannot approve, reject, or retry anything. That is deliberate. Every proposed action spends real money, ships real product, or emails a real customer, so a human decides — never an agent. If asked to approve something, say plainly that you can't and tell the operator to run `shopagent approvals approve <id>` or use the approve button.\n- You cannot create products, edit listings, change prices, place supplier orders, or touch the code repository.\n- You cannot see anything outside the pipeline: no live Shopify admin, no Amazon Seller Central, no CJ catalog browsing.\n\nHow to be useful:\n\n- Lead with what needs the operator's attention. \"3 pending approvals, 2 orders stuck in attention\" beats a wall of JSON.\n- When summarizing a pending approval, fetch its detail and state the specifics that matter for a decision: what it will do, to which product or order, at what price, and the agent's rationale. Flag anything that looks off — a thin margin, a price that doesn't match the pipeline, a missing tracking number.\n- Always include ids (approval #, product id, order id) so the operator can act without hunting.\n- Be concise. The operator is often reading this on a phone.\n- If a tool call fails, say so and what it means. A connection error means the shopagent server or the tunnel isn't running on their PC — say that rather than guessing at the data.\n- Never invent pipeline data. If a tool didn't return it, you don't know it."
+          "systemMessage": "You are the Store Manager, a read-only operations assistant for FurrFlow, a pet-niche dropshipping business selling on Shopify and Amazon, sourced from CJ Dropshipping.\n\nYou are a window into the shopagent pipeline running on the operator's machine. Everything you can see comes from its HTTP API:\n\n- get_status: modes, how many actions await approval, product and order counts by status, recent agent runs. Start here when asked an open question like \"what's going on\" or \"what needs me\".\n- list_approvals: actions the local agents have proposed. Default status is pending; pass 'all', 'approved', 'executed', 'failed', or 'rejected' to see others.\n- get_approval: one approval in full, including the exact payload that would execute. Use this before summarizing anything the operator might act on \u2014 the list view deliberately omits payloads.\n- list_products: the product pipeline (candidate, shortlisted, drafted, listed, rejected).\n- list_orders: the order pipeline, filterable by status and by channel ('shopify' or 'amazon').\n- list_videos: TikTok/Reels ads that have been rendered, and where each file is.\n- list_trends: trend notes imported by hand from TikTok Creative Center or an analytics export.\n\nWhat you cannot do, and must not imply otherwise:\n\n- You cannot approve, reject, or retry anything. That is deliberate. Every proposed action spends real money, ships real product, or emails a real customer, so a human decides \u2014 never an agent. If asked to approve something, say plainly that you can't and tell the operator to run `shopagent approvals approve <id>` or use the approve button.\n- You cannot create products, edit listings, change prices, place supplier orders, render or upload videos, or touch the code repository.\n- You cannot see anything outside the pipeline: no live Shopify admin, no Amazon Seller Central, no CJ catalog browsing.\n\nHow to be useful:\n\n- Lead with what needs the operator's attention. \"3 pending approvals, 2 orders stuck in attention\" beats a wall of JSON.\n- When summarizing a pending approval, fetch its detail and state the specifics that matter for a decision: what it will do, to which product or order, at what price, and the agent's rationale. Flag anything that looks off \u2014 a thin margin, a price that doesn't match the pipeline, a missing tracking number.\n- Always include ids (approval #, product id, order id) so the operator can act without hunting.\n- Be concise. The operator is often reading this on a phone.\n- If a tool call fails, say so and what it means. A connection error means the shopagent server or the tunnel isn't running on their PC \u2014 say that rather than guessing at the data.\n- A rendered ad carries a royalty-free music bed. That is safe for a draft but NOT for a paid ad or a Business account \u2014 say so whenever you mention a video, and point the operator at TikTok's Commercial Music Library, which is only browsable in the app.\n- Never invent pipeline data. If a tool didn't return it, you don't know it."
         }
       }
     },
@@ -34,7 +40,10 @@
       "name": "Claude",
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
       "typeVersion": 1.5,
-      "position": [224, 336],
+      "position": [
+        224,
+        336
+      ],
       "parameters": {
         "model": {
           "__rl": true,
@@ -49,7 +58,10 @@
       "name": "Conversation Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.4,
-      "position": [352, 336],
+      "position": [
+        352,
+        336
+      ],
       "parameters": {
         "sessionIdType": "fromInput",
         "contextWindowLength": 15
@@ -60,7 +72,10 @@
       "name": "get_status",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1,
-      "position": [480, 336],
+      "position": [
+        480,
+        336
+      ],
       "parameters": {
         "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/status",
         "authentication": "genericCredentialType",
@@ -79,7 +94,10 @@
       "name": "list_approvals",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1,
-      "position": [608, 336],
+      "position": [
+        608,
+        336
+      ],
       "parameters": {
         "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/approvals",
         "authentication": "genericCredentialType",
@@ -92,7 +110,7 @@
             }
           ]
         },
-        "toolDescription": "List actions the local agents have proposed and that are waiting on a human decision. The optional 'status' parameter is one of: pending (the default), approved, executed, failed, rejected, or 'all' for every row. Returns summaries only — call get_approval for the full payload of any specific one."
+        "toolDescription": "List actions the local agents have proposed and that are waiting on a human decision. The optional 'status' parameter is one of: pending (the default), approved, executed, failed, rejected, or 'all' for every row. Returns summaries only \u2014 call get_approval for the full payload of any specific one."
       },
       "credentials": {
         "httpHeaderAuth": {
@@ -106,7 +124,10 @@
       "name": "get_approval",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1,
-      "position": [736, 336],
+      "position": [
+        736,
+        336
+      ],
       "parameters": {
         "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/approval",
         "authentication": "genericCredentialType",
@@ -119,7 +140,7 @@
             }
           ]
         },
-        "toolDescription": "Get one proposed action in full by its numeric id, including the exact payload that would execute, the agent's rationale, and which product or order it is linked to. Required parameter: id (the approval number shown by list_approvals). Use this before describing an action the operator might approve — the list view omits payloads on purpose."
+        "toolDescription": "Get one proposed action in full by its numeric id, including the exact payload that would execute, the agent's rationale, and which product or order it is linked to. Required parameter: id (the approval number shown by list_approvals). Use this before describing an action the operator might approve \u2014 the list view omits payloads on purpose."
       },
       "credentials": {
         "httpHeaderAuth": {
@@ -133,7 +154,10 @@
       "name": "list_products",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1,
-      "position": [864, 336],
+      "position": [
+        864,
+        336
+      ],
       "parameters": {
         "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/products",
         "authentication": "genericCredentialType",
@@ -160,7 +184,10 @@
       "name": "list_orders",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1,
-      "position": [992, 336],
+      "position": [
+        992,
+        336
+      ],
       "parameters": {
         "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/orders",
         "authentication": "genericCredentialType",
@@ -184,32 +211,170 @@
           "name": "shopagent API"
         }
       }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "list_videos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        336
+      ],
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/videos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "toolDescription": "List rendered TikTok/Reels ads and where each file sits on disk, with the product it advertises and its tiktok_status (rendered or uploaded). Takes no parameters. Note that a rendered ad carries a royalty-free music bed, which is safe for a draft but not for a paid ad \u2014 a TikTok Commercial Music Library track has to be swapped in first, in the TikTok app."
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ON_IMPORT",
+          "name": "shopagent API"
+        }
+      }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "name": "list_trends",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        336
+      ],
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-TUNNEL.trycloudflare.com/trends",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "kind"
+            }
+          ]
+        },
+        "toolDescription": "List trend observations imported from TikTok Creative Center or an analytics export. Optional 'kind' is one of: hashtag, format, product, sound, creator, niche, note. These are captured by hand because no public API exposes trending TikTok Shop products, so check the captured_at date before treating any number as current."
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ON_IMPORT",
+          "name": "shopagent API"
+        }
+      }
     }
   ],
   "connections": {
     "Store Manager Chat": {
-      "main": [[{ "node": "Store Manager", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Claude": {
-      "ai_languageModel": [[{ "node": "Store Manager", "type": "ai_languageModel", "index": 0 }]]
+      "ai_languageModel": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Conversation Memory": {
-      "ai_memory": [[{ "node": "Store Manager", "type": "ai_memory", "index": 0 }]]
+      "ai_memory": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
     },
     "get_status": {
-      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+      "ai_tool": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
     },
     "list_approvals": {
-      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+      "ai_tool": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
     },
     "get_approval": {
-      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+      "ai_tool": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
     },
     "list_products": {
-      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+      "ai_tool": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
     },
     "list_orders": {
-      "ai_tool": [[{ "node": "Store Manager", "type": "ai_tool", "index": 0 }]]
+      "ai_tool": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "list_videos": {
+      "ai_tool": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "list_trends": {
+      "ai_tool": [
+        [
+          {
+            "node": "Store Manager",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {

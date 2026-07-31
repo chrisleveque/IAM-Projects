@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -24,10 +25,17 @@ approvals_app = typer.Typer(help="Review and execute proposed actions.", no_args
 orders_app = typer.Typer(help="Order pipeline.", no_args_is_help=True)
 products_app = typer.Typer(help="Product pipeline.", no_args_is_help=True)
 cj_app = typer.Typer(help="Direct CJ Dropshipping catalog lookups.", no_args_is_help=True)
+content_app = typer.Typer(help="Short-form video ads (TikTok/Reels).", no_args_is_help=True)
+trends_app = typer.Typer(help="Trend notes imported from inbox/trends/.",
+                         no_args_is_help=True)
+music_app = typer.Typer(help="Royalty-free music search.", no_args_is_help=True)
 app.add_typer(approvals_app, name="approvals")
 app.add_typer(orders_app, name="orders")
 app.add_typer(products_app, name="products")
 app.add_typer(cj_app, name="cj")
+app.add_typer(content_app, name="content")
+app.add_typer(trends_app, name="trends")
+app.add_typer(music_app, name="music")
 
 console = Console()
 
@@ -55,10 +63,28 @@ def _clients(cfg: AppConfig):
     return make_shopify_client(cfg), make_cj_client(cfg), make_amazon_client(cfg)
 
 
+def _content_clients(cfg: AppConfig):
+    """Music + TikTok. Split from _clients so the store/supplier commands don't
+    pay for imports they never use."""
+    from .integrations.music_client import make_music_client
+    from .integrations.tiktok_client import make_tiktok_client
+    return make_music_client(cfg), make_tiktok_client(cfg)
+
+
+def _executor(cfg: AppConfig, store: Store):
+    from .executor import Executor
+    shopify, cj, amazon = _clients(cfg)
+    music, tiktok = _content_clients(cfg)
+    return Executor(store, cfg, shopify, cj, amazon=amazon, music=music,
+                    tiktok=tiktok)
+
+
 def _orchestrator(cfg: AppConfig, store: Store):
     from .orchestrator import Orchestrator
     shopify, cj, amazon = _clients(cfg)
-    return Orchestrator(_ai(cfg), store, cfg, shopify, cj, amazon=amazon)
+    music, tiktok = _content_clients(cfg)
+    return Orchestrator(_ai(cfg), store, cfg, shopify, cj, amazon=amazon,
+                        music=music, tiktok=tiktok)
 
 
 def _mode_banner(cfg: AppConfig) -> None:
@@ -69,6 +95,10 @@ def _mode_banner(cfg: AppConfig) -> None:
     if cfg.mode == "live" and "mock" in (shop, cj, amz):
         console.print("[yellow]warning: live mode but missing credentials — "
                       "the mock backend is used for the integrations above[/yellow]")
+
+
+def _content_banner(cfg: AppConfig) -> None:
+    console.print(f"[dim]music: {cfg.music_mode()} | tiktok: {cfg.tiktok_mode()} (draft upload only)[/dim]")
 
 
 def _fail(msg: str) -> int:
@@ -147,11 +177,28 @@ def doctor() -> None:
          "Seller Central merchant token"),
         ("SHOPAGENT_API_TOKEN", bool(os.environ.get("SHOPAGENT_API_TOKEN")),
          "only needed for `shopagent serve`"),
+        ("PIXABAY_API_KEY", bool(os.environ.get("PIXABAY_API_KEY")),
+         "royalty-free music (either provider is enough)"),
+        ("JAMENDO_CLIENT_ID", bool(os.environ.get("JAMENDO_CLIENT_ID")),
+         "royalty-free music (either provider is enough)"),
+        ("TIKTOK_CLIENT_KEY", bool(os.environ.get("TIKTOK_CLIENT_KEY")),
+         "optional: upload renders to TikTok drafts"),
+        ("TIKTOK_CLIENT_SECRET", bool(os.environ.get("TIKTOK_CLIENT_SECRET")),
+         "optional: upload renders to TikTok drafts"),
+        ("TIKTOK_REFRESH_TOKEN", bool(os.environ.get("TIKTOK_REFRESH_TOKEN")),
+         "optional: upload renders to TikTok drafts"),
     ]
     for name, ok, why in checks:
         mark = "[green]set[/green]" if ok else "[yellow]missing[/yellow]"
         console.print(f"  {name}: {mark}  ({why})")
     console.print(f"  shopify auth method: {cfg.shopify_auth_method()}")
+    from .video.render import ffmpeg_available
+    if ffmpeg_available():
+        console.print("  ffmpeg: [green]found[/green] (video rendering available)")
+    else:
+        console.print("  ffmpeg: [yellow]missing[/yellow] — video rendering will "
+                      "fail. Windows: [cyan]winget install Gyan.FFmpeg[/cyan] "
+                      "then open a NEW terminal")
     try:
         store = _store(cfg)
         store.conn.execute("SELECT 1")
@@ -315,6 +362,134 @@ def marketing(action: str = typer.Argument("draft", help="Only: draft"),
     console.print(result.text)
 
 
+# ------------------------------------------------------------------- content
+
+@content_app.command("draft")
+def content_draft(product_id: Optional[int] = typer.Option(None, "--product-id")) -> None:
+    """Have the content agent write TikTok ad scripts and propose renders."""
+    cfg = _cfg()
+    _mode_banner(cfg)
+    _content_banner(cfg)
+    store = _store(cfg)
+    _seed_mock_trends(cfg, store)
+    task = ("Write a vertical video ad script for "
+            + (f"listed product id {product_id} only." if product_id
+               else "each listed product that doesn't have a video yet."))
+    result = _orchestrator(cfg, store).run_task("content", task)
+    console.print(result.text)
+    console.print("[dim]approve a render with: shopagent approvals approve <id>[/dim]")
+
+
+@content_app.command("videos")
+def content_videos() -> None:
+    """List rendered videos and where they are on disk."""
+    cfg = _cfg()
+    store = _store(cfg)
+    rows = [p for p in store.list_products() if p.get("video_path")]
+    if not rows:
+        console.print("no videos rendered yet — try [cyan]shopagent content draft[/cyan]")
+        return
+    table = Table(title="Rendered videos")
+    for col in ("id", "product", "tiktok", "file"):
+        table.add_column(col)
+    for p in rows:
+        table.add_row(str(p["id"]), p["name"][:34],
+                      p.get("tiktok_status", ""), p["video_path"])
+    console.print(table)
+    console.print("[dim]Upload from the TikTok app, or approve a "
+                  "tiktok.upload_draft action to send it to your drafts.[/dim]")
+    console.print("[yellow]Before running one as an ad, swap the soundtrack for a "
+                  "track from TikTok's Commercial Music Library.[/yellow]")
+
+
+# -------------------------------------------------------------------- trends
+
+@trends_app.command("import")
+def trends_import(
+    directory: Optional[str] = typer.Option(
+        None, "--dir", help="Defaults to inbox/trends/ inside the project")) -> None:
+    """Parse trend notes you exported from TikTok Creative Center (or an
+    analytics tool) into the local trends table."""
+    from .trends import import_dir
+
+    cfg = _cfg()
+    store = _store(cfg)
+    target = Path(directory) if directory else cfg.inbox_dir / "trends"
+    if not target.is_dir():
+        raise typer.Exit(code=_fail(
+            f"no such directory: {target}\n"
+            "Create it and drop in .md or .csv exports, then re-run. There is "
+            "no public API for trending TikTok Shop products, so this is how "
+            "trend data gets in."))
+    results = import_dir(store, target)
+    if not results:
+        raise typer.Exit(code=_fail(f"no .md/.csv/.txt files found in {target}"))
+    for name, count in results.items():
+        console.print(f"  {name}: [green]{count}[/green] rows")
+    console.print(f"imported into {cfg.db_path}")
+
+
+@trends_app.command("list")
+def trends_list(kind: Optional[str] = typer.Option(None, "--kind",
+                                                   help="hashtag, format, product, sound, note"),
+                limit: int = typer.Option(30, "--limit")) -> None:
+    """Show imported trend observations."""
+    cfg = _cfg()
+    store = _store(cfg)
+    rows = store.list_trends(kind=kind, limit=limit)
+    if not rows:
+        console.print("no trends imported — run [cyan]shopagent trends import[/cyan]")
+        return
+    table = Table(title="Trends")
+    for col in ("kind", "label", "metric", "captured", "source"):
+        table.add_column(col)
+    for r in rows:
+        table.add_row(r["kind"], r["label"][:40], r["metric"][:24],
+                      r["captured_at"][:12], r["source"][:20])
+    console.print(table)
+
+
+# --------------------------------------------------------------------- music
+
+@music_app.command("search")
+def music_search(query: str,
+                 limit: int = typer.Option(8, "--limit")) -> None:
+    """Search royalty-free music licensed for commercial use."""
+    cfg = _cfg()
+    music, _ = _content_clients(cfg)
+    try:
+        tracks = music.search(query, limit=limit)
+    except Exception as exc:
+        raise typer.Exit(code=_fail(str(exc)))
+    if not tracks:
+        raise typer.Exit(code=_fail(f"no tracks matched {query!r}"))
+    table = Table(title=f"Royalty-free music for {query!r}")
+    for col in ("title", "artist", "secs", "license", "source"):
+        table.add_column(col)
+    for t in tracks:
+        table.add_row(t["title"][:32], t["artist"][:22], str(t["duration"]),
+                      t["license"][:28], t["source"])
+    console.print(table)
+    console.print("[yellow]These are safe to render into a draft. For a paid ad "
+                  "or a Business account, use TikTok's Commercial Music Library "
+                  "instead — it is only browsable in the app.[/yellow]")
+
+
+def _seed_mock_trends(cfg: AppConfig, store: Store) -> None:
+    """Give the content agent something to reason about before the operator has
+    exported anything real."""
+    if store.list_trends(limit=1):
+        return
+    trend_dir = cfg.inbox_dir / "trends"
+    trend_dir.mkdir(parents=True, exist_ok=True)
+    if not any(p.suffix in (".md", ".csv", ".txt") for p in trend_dir.iterdir()):
+        from .integrations.fixtures import TREND_NOTES
+        for name, content in TREND_NOTES.items():
+            (trend_dir / name).write_text(content, encoding="utf-8")
+    from .trends import import_dir
+    import_dir(store, trend_dir)
+
+
 def _seed_mock_inbox(cfg: AppConfig) -> None:
     """In mock mode, populate an empty inbox with fixture messages so the
     support flow is demonstrable without a real mailbox."""
@@ -410,13 +585,11 @@ def approvals_approve(approval_id: int) -> None:
     cfg = _cfg()
     _mode_banner(cfg)
     store = _store(cfg)
-    from .executor import Executor
     try:
         store.decide_approval(approval_id, "approved")
     except ValueError as exc:
         raise typer.Exit(code=_fail(str(exc)))
-    shopify, cj, amazon_client = _clients(cfg)
-    a = Executor(store, cfg, shopify, cj, amazon=amazon_client).execute(approval_id)
+    a = _executor(cfg, store).execute(approval_id)
     if a.status == "executed":
         console.print(f"[green]#{approval_id} executed[/green]: {a.result}")
     else:
@@ -450,9 +623,7 @@ def approvals_retry(approval_id: int) -> None:
     if a.status != "failed":
         raise typer.Exit(code=_fail(f"approval #{approval_id} is {a.status}, not failed"))
     store.decide_approval(approval_id, "approved")
-    from .executor import Executor
-    shopify, cj, amazon_client = _clients(cfg)
-    a = Executor(store, cfg, shopify, cj, amazon=amazon_client).execute(approval_id)
+    a = _executor(cfg, store).execute(approval_id)
     if a.status == "executed":
         console.print(f"[green]#{approval_id} executed[/green]: {a.result}")
     else:

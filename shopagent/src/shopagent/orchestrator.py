@@ -8,6 +8,7 @@ tool-use loop; a failure in one step is recorded and the pipeline continues.
 from __future__ import annotations
 
 from .agents.amazon import AmazonListingAgent
+from .agents.content import ContentAgent
 from .agents.fulfillment import FulfillmentAgent
 from .agents.listings import ListingsAgent
 from .agents.marketing import MarketingAgent
@@ -23,22 +24,26 @@ AGENTS = {
     "support": SupportAgent,
     "marketing": MarketingAgent,
     "amazon": AmazonListingAgent,
+    "content": ContentAgent,
 }
 
 
 class Orchestrator:
-    def __init__(self, ai, store: Store, cfg: AppConfig, shopify, cj, amazon=None):
+    def __init__(self, ai, store: Store, cfg: AppConfig, shopify, cj,
+                 amazon=None, music=None, tiktok=None):
         self.ai = ai
         self.store = store
         self.cfg = cfg
         self.shopify = shopify
         self.cj = cj
         self.amazon = amazon
+        self.music = music
+        self.tiktok = tiktok
 
     def agent(self, name: str):
         cls = AGENTS[name]
         return cls(self.ai, self.store, self.cfg, shopify=self.shopify, cj=self.cj,
-                   amazon=self.amazon)
+                   amazon=self.amazon, music=self.music, tiktok=self.tiktok)
 
     def run_task(self, agent_name: str, task: str):
         return self.agent(agent_name).run(task)

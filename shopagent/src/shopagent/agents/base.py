@@ -26,13 +26,15 @@ class Agent:
     description: str = ""
 
     def __init__(self, ai, store: Store, cfg: AppConfig, shopify=None, cj=None,
-                 amazon=None):
+                 amazon=None, music=None, tiktok=None):
         self.ai = ai
         self.store = store
         self.cfg = cfg
         self.shopify = shopify
         self.cj = cj
         self.amazon = amazon
+        self.music = music
+        self.tiktok = tiktok
 
     # ---- subclass surface -------------------------------------------------
 
