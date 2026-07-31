@@ -47,6 +47,7 @@ class VideoConfig(BaseModel):
     transition_seconds: float = 0.4     # crossfade between shots; 0 = hard cuts
     end_card_seconds: float = 1.5       # 0 disables the closing brand card
     voiceover: bool = False             # experimental; needs `pip install -e .[voice]`
+    engine: str = "auto"                # auto | ffmpeg | json2video
 
 
 class PricingConfig(BaseModel):
@@ -140,6 +141,25 @@ class AppConfig(BaseModel):
         if os.environ.get("PIXABAY_API_KEY") or os.environ.get("JAMENDO_CLIENT_ID"):
             return "live"
         return "mock"
+
+    def render_engine(self) -> str:
+        """Which engine `tiktok.render_video` uses: 'ffmpeg' or 'json2video'.
+
+        Unlike the *_mode() resolvers this is not gated on mode: live —
+        rendering a video is not a customer-facing mutation, and the whole
+        point of the cloud engine is judging its quality before going live.
+        'auto' picks json2video whenever its key exists.
+        """
+        engine = (self.video.engine or "auto").lower()
+        if engine not in ("auto", "ffmpeg", "json2video"):
+            raise ValueError(
+                f"video.engine must be auto/ffmpeg/json2video, got {engine!r}")
+        has_key = bool(os.environ.get("JSON2VIDEO_API_KEY"))
+        if engine == "json2video" and not has_key:
+            return "ffmpeg"  # configured but no key: degrade, don't crash
+        if engine == "auto":
+            return "json2video" if has_key else "ffmpeg"
+        return engine
 
     def tiktok_mode(self) -> str:
         """Effective mode for TikTok draft upload: 'live' or 'mock'.

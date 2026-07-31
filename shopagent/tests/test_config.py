@@ -111,3 +111,38 @@ def test_paths_resolve_under_root(tmp_path):
     cfg.root = tmp_path
     assert cfg.db_path == tmp_path / "shopagent.db"
     assert cfg.inbox_dir == tmp_path / "inbox"
+
+
+def test_render_engine_auto_follows_the_key(tmp_path, monkeypatch):
+    (tmp_path / "config.yaml").write_text("mode: dry_run\n", encoding="utf-8")
+    monkeypatch.delenv("JSON2VIDEO_API_KEY", raising=False)
+    assert load_config(tmp_path).render_engine() == "ffmpeg"
+    monkeypatch.setenv("JSON2VIDEO_API_KEY", "k")
+    # engine choice is deliberately independent of dry_run/live: a render is
+    # not a customer-facing mutation
+    assert load_config(tmp_path).render_engine() == "json2video"
+
+
+def test_render_engine_explicit_choices(tmp_path, monkeypatch):
+    monkeypatch.setenv("JSON2VIDEO_API_KEY", "k")
+    (tmp_path / "config.yaml").write_text(
+        "mode: dry_run\nvideo:\n  engine: ffmpeg\n", encoding="utf-8")
+    assert load_config(tmp_path).render_engine() == "ffmpeg"
+    (tmp_path / "config.yaml").write_text(
+        "mode: dry_run\nvideo:\n  engine: json2video\n", encoding="utf-8")
+    assert load_config(tmp_path).render_engine() == "json2video"
+
+
+def test_render_engine_json2video_without_key_degrades_to_ffmpeg(tmp_path,
+                                                                 monkeypatch):
+    monkeypatch.delenv("JSON2VIDEO_API_KEY", raising=False)
+    (tmp_path / "config.yaml").write_text(
+        "mode: dry_run\nvideo:\n  engine: json2video\n", encoding="utf-8")
+    assert load_config(tmp_path).render_engine() == "ffmpeg"
+
+
+def test_render_engine_rejects_unknown_values(tmp_path):
+    (tmp_path / "config.yaml").write_text(
+        "mode: dry_run\nvideo:\n  engine: imovie\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="video.engine must be"):
+        load_config(tmp_path).render_engine()

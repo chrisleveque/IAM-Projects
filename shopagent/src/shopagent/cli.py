@@ -73,10 +73,19 @@ def _content_clients(cfg: AppConfig):
 
 def _executor(cfg: AppConfig, store: Store):
     from .executor import Executor
+    from .integrations.json2video_client import make_json2video_client
     shopify, cj, amazon = _clients(cfg)
     music, tiktok = _content_clients(cfg)
+    # best-effort AI client: it only powers the render repair loop, and a
+    # missing ANTHROPIC_API_KEY must not block approving non-video actions
+    try:
+        from .ai.client import AIClient
+        ai = AIClient(cfg.ai.model, cfg.ai.max_tokens)
+    except Exception:
+        ai = None
     return Executor(store, cfg, shopify, cj, amazon=amazon, music=music,
-                    tiktok=tiktok)
+                    tiktok=tiktok, json2video=make_json2video_client(cfg),
+                    ai=ai)
 
 
 def _orchestrator(cfg: AppConfig, store: Store):
@@ -98,7 +107,9 @@ def _mode_banner(cfg: AppConfig) -> None:
 
 
 def _content_banner(cfg: AppConfig) -> None:
-    console.print(f"[dim]music: {cfg.music_mode()} | tiktok: {cfg.tiktok_mode()} (draft upload only)[/dim]")
+    console.print(f"[dim]render engine: {cfg.render_engine()} | "
+                  f"music: {cfg.music_mode()} | "
+                  f"tiktok: {cfg.tiktok_mode()} (draft upload only)[/dim]")
 
 
 def _fail(msg: str) -> int:
@@ -182,6 +193,9 @@ def doctor() -> None:
         ("JAMENDO_CLIENT_ID", bool(os.environ.get("JAMENDO_CLIENT_ID")),
          "royalty-free music — free 2-min signup at devportal.jamendo.com; "
          "without a key, renders get an audible placeholder tone"),
+        ("JSON2VIDEO_API_KEY", bool(os.environ.get("JSON2VIDEO_API_KEY")),
+         "cloud video editor — free tier at json2video.com; without it, "
+         "the local ffmpeg renderer is used"),
         ("TIKTOK_CLIENT_KEY", bool(os.environ.get("TIKTOK_CLIENT_KEY")),
          "optional: upload renders to TikTok drafts"),
         ("TIKTOK_CLIENT_SECRET", bool(os.environ.get("TIKTOK_CLIENT_SECRET")),
@@ -200,6 +214,17 @@ def doctor() -> None:
         console.print("  ffmpeg: [yellow]missing[/yellow] — video rendering will "
                       "fail. Windows: [cyan]winget install Gyan.FFmpeg[/cyan] "
                       "then open a NEW terminal")
+    console.print(f"  render engine: {cfg.render_engine()}")
+    if cfg.render_engine() == "json2video":
+        from .integrations.json2video_client import (JSON2VideoError,
+                                                     make_json2video_client)
+        try:
+            make_json2video_client(cfg).check_auth()
+            console.print("  json2video: [green]API key accepted[/green]")
+        except JSON2VideoError as exc:
+            console.print(f"  json2video: [red]{exc}[/red]")
+        except Exception as exc:
+            console.print(f"  json2video: [red]unreachable: {exc}[/red]")
     try:
         store = _store(cfg)
         store.conn.execute("SELECT 1")
