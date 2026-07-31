@@ -180,7 +180,8 @@ def doctor() -> None:
         ("PIXABAY_API_KEY", bool(os.environ.get("PIXABAY_API_KEY")),
          "royalty-free music (either provider is enough)"),
         ("JAMENDO_CLIENT_ID", bool(os.environ.get("JAMENDO_CLIENT_ID")),
-         "royalty-free music (either provider is enough)"),
+         "royalty-free music — free 2-min signup at devportal.jamendo.com; "
+         "without a key, renders get an audible placeholder tone"),
         ("TIKTOK_CLIENT_KEY", bool(os.environ.get("TIKTOK_CLIENT_KEY")),
          "optional: upload renders to TikTok drafts"),
         ("TIKTOK_CLIENT_SECRET", bool(os.environ.get("TIKTOK_CLIENT_SECRET")),

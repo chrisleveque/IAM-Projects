@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 api = ["fastapi>=0.110", "uvicorn>=0.30"]
+voice = ["edge-tts>=6.1"]
 dev = ["pytest>=8.0", "fastapi>=0.110", "uvicorn>=0.30"]
 
 [project.scripts]
@@ -26,3 +27,7 @@ shopagent = "shopagent.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# the vendored caption font (SIL OFL; licence ships alongside it)
+shopagent = ["assets/fonts/*"]

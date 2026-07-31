@@ -30,9 +30,14 @@ import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Candidates in preference order; the first that exists wins. A bold face reads
-# far better under a semi-transparent box at phone size.
+# Candidates in preference order; the first that exists wins. The vendored
+# Poppins (SIL OFL, licence alongside the file) leads so the same typeface
+# renders on Windows and Linux; the OS fonts remain as fallbacks for an
+# installation that stripped package data. A bold face reads far better under
+# a semi-transparent box at phone size.
+VENDORED_FONT = Path(__file__).resolve().parents[1] / "assets" / "fonts" / "Poppins-Bold.ttf"
 FONT_CANDIDATES = (
+    str(VENDORED_FONT),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
     "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
@@ -194,12 +199,14 @@ def _pan_expr(move: str, duration: float) -> tuple[str, str]:
     return centre_x, f"(ih-oh)*(1-{progress})"
 
 
-def _drawtext(textfile: Path, font: str, size: int, y_expr: str) -> str:
+def _drawtext(textfile: Path, font: str, size: int, y_expr: str,
+              box_color: str = "black@0.55") -> str:
+    boxed = (f":box=1:boxcolor={box_color}:boxborderw=28" if box_color else "")
     return (
         f"drawtext=textfile={_filter_path(textfile)}"
         f":fontfile={_filter_path(font)}"
-        f":fontsize={size}:fontcolor=white:line_spacing=10"
-        f":box=1:boxcolor=black@0.55:boxborderw=24"
+        f":fontsize={size}:fontcolor=white:line_spacing=14"
+        f"{boxed}"
         f":x=(w-text_w)/2:y={y_expr}"
     )
 
@@ -255,11 +262,18 @@ def render_slideshow(images: list[Path | str], script: dict | Script,
                      seconds_per_shot: float = 2.8, max_seconds: float = 34.0,
                      music_volume: float = 0.5, font_path: str = "",
                      font_size_hook: int = 78, font_size_caption: int = 56,
+                     accent_color: str = "0x5BC8AC", brand_name: str = "",
+                     transition_seconds: float = 0.4, end_card_seconds: float = 1.5,
+                     voice_path: Path | str | None = None,
+                     voice_duck: float = 0.25,
                      work_dir: Path | str | None = None) -> Path:
     """Render a vertical ad from still images. Returns the output path.
 
     Shot count is capped by ``max_seconds`` — a long image list produces a
-    shorter video rather than one nobody watches to the end.
+    shorter video rather than one nobody watches to the end. Shots crossfade
+    (``transition_seconds``; 0 restores hard cuts), and a closing brand card
+    carries the CTA when enabled. With ``voice_path``, the music bed is ducked
+    to ``voice_duck`` under the voiceover.
     """
     _require_ffmpeg()
     images = [Path(p) for p in images]
@@ -276,23 +290,31 @@ def render_slideshow(images: list[Path | str], script: dict | Script,
 
     max_shots = max(1, int(max_seconds // seconds_per_shot))
     images = images[:max_shots]
+    end_card = end_card_seconds > 0 and bool(brand_name or parsed.cta)
 
     work = Path(work_dir) if work_dir else out_path.parent / f".{out_path.stem}_work"
     work.mkdir(parents=True, exist_ok=True)
 
     over_w = int(width * PAN_OVERSAMPLE)
     over_h = int(height * PAN_OVERSAMPLE)
+    # every segment is normalized to one pixel format: xfade (unlike concat)
+    # refuses to blend streams that differ, and jpeg-sourced frames arrive as
+    # yuvj420p while lavfi color is rgb. Frame RATE is deliberately normalized
+    # at the inputs (-framerate on stills, r= on the lavfi card), NOT with an
+    # fps filter here — fps after an overlay drops the final frame at EOF,
+    # which silently shaved a frame off every contain-fit shot.
+    normalize = ",format=yuv420p"
 
     args: list[str] = ["ffmpeg", "-y", "-loglevel", "error"]
     for image in images:
         args += ["-loop", "1", "-framerate", str(fps),
                  "-t", f"{seconds_per_shot:.3f}", "-i", str(image)]
-    if music_path:
-        # loop the bed so a track shorter than the ad still covers it; atrim
-        # below cuts it back to exactly the video length
-        args += ["-stream_loop", "-1", "-i", str(music_path)]
+    if end_card:
+        args += ["-f", "lavfi", "-t", f"{end_card_seconds:.3f}",
+                 "-i", f"color=c={accent_color}:s={width}x{height}:r={fps}"]
 
     chains: list[str] = []
+    durations: list[float] = []
     for index, image in enumerate(images):
         chain = _shot_chain(index, image, width, height, over_w, over_h,
                             seconds_per_shot)
@@ -302,27 +324,79 @@ def render_slideshow(images: list[Path | str], script: dict | Script,
             chain += "," + _drawtext(path, font, font_size_caption, "h*0.72")
         if index == 0 and parsed.hook:
             path = _write_text(parsed.hook, work / "hook.txt", HOOK_WRAP)
-            chain += "," + _drawtext(path, font, font_size_hook, "h*0.12")
-        if index == len(images) - 1 and parsed.cta:
+            chain += "," + _drawtext(path, font, font_size_hook, "h*0.12",
+                                     box_color=f"{accent_color}@0.9")
+        if index == len(images) - 1 and parsed.cta and not end_card:
             path = _write_text(parsed.cta, work / "cta.txt", HOOK_WRAP)
             chain += "," + _drawtext(path, font, font_size_hook, "h*0.42")
-        chains.append(chain + f"[v{index}]")
+        chains.append(chain + normalize + f"[v{index}]")
+        durations.append(seconds_per_shot)
 
-    concat_inputs = "".join(f"[v{i}]" for i in range(len(images)))
-    chains.append(f"{concat_inputs}concat=n={len(images)}:v=1:a=0[outv]")
+    if end_card:
+        index = len(images)
+        chain = f"[{index}:v]setsar=1"
+        if brand_name:
+            path = _write_text(brand_name, work / "brand.txt", HOOK_WRAP)
+            chain += "," + _drawtext(path, font, int(font_size_hook * 1.35),
+                                     "h*0.40", box_color="")
+        if parsed.cta:
+            path = _write_text(parsed.cta, work / "cta.txt", HOOK_WRAP)
+            chain += "," + _drawtext(path, font, font_size_hook, "h*0.54",
+                                     box_color="black@0.25")
+        chains.append(chain + normalize + f"[v{index}]")
+        durations.append(end_card_seconds)
 
-    total = len(images) * seconds_per_shot
+    segments = len(durations)
+    # a crossfade longer than half the shortest segment would consume it
+    fade = (min(transition_seconds, min(durations) / 2)
+            if segments > 1 and transition_seconds > 0 else 0.0)
+    if fade > 0:
+        # chain xfades; each offset is the merged stream's length so far minus
+        # the overlap, so total = sum(durations) - (segments-1)*fade
+        merged = "[v0]"
+        elapsed = durations[0]
+        for index in range(1, segments):
+            label = "[outv]" if index == segments - 1 else f"[x{index}]"
+            chains.append(f"{merged}[v{index}]xfade=transition=fade:"
+                          f"duration={fade:.3f}:offset={elapsed - fade:.3f}{label}")
+            elapsed += durations[index] - fade
+            merged = label
+        total = elapsed
+    else:
+        concat_inputs = "".join(f"[v{i}]" for i in range(segments))
+        chains.append(f"{concat_inputs}concat=n={segments}:v=1:a=0[outv]")
+        total = sum(durations)
+
+    audio_inputs = 0
     if music_path:
-        # atrim, not -shortest: with filter_complex, -shortest does not reliably
-        # cut a filtered audio stream, and an overlong track pads the ad with
+        # loop the bed so a track shorter than the ad still covers it; atrim
+        # cuts it back — with filter_complex, -shortest does not reliably cut
+        # a filtered audio stream, and an overlong track pads the ad with
         # dead air after the last frame.
+        args += ["-stream_loop", "-1", "-i", str(music_path)]
+        audio_inputs += 1
+    if voice_path:
+        args += ["-i", str(voice_path)]
+        audio_inputs += 1
+
+    if audio_inputs:
         fade_at = max(0.0, total - 1.2)
-        chains.append(f"[{len(images)}:a]volume={music_volume},"
-                      f"atrim=0:{total:.3f},asetpts=N/SR/TB,"
-                      f"afade=t=out:st={fade_at:.3f}:d=1.2[outa]")
+        finish = (f"atrim=0:{total:.3f},asetpts=N/SR/TB,"
+                  f"afade=t=out:st={fade_at:.3f}:d=1.2[outa]")
+        music_index = segments if end_card else len(images)
+        if music_path and voice_path:
+            level = music_volume * voice_duck
+            chains.append(f"[{music_index}:a]volume={level:.3f}[bed]")
+            chains.append(f"[{music_index + 1}:a]apad[vox]")
+            chains.append(f"[bed][vox]amix=inputs=2:duration=first:normalize=0,"
+                          + finish)
+        elif music_path:
+            chains.append(f"[{music_index}:a]volume={music_volume}," + finish)
+        else:
+            chains.append(f"[{music_index}:a]apad," + finish)
 
     args += ["-filter_complex", ";".join(chains), "-map", "[outv]"]
-    if music_path:
+    if audio_inputs:
         args += ["-map", "[outa]", "-c:a", "aac", "-b:a", "128k"]
     args += ["-t", f"{total:.3f}"]
     args += ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",

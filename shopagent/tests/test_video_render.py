@@ -190,7 +190,8 @@ def test_mixed_aspect_images_render_in_one_pass(tmp_path, music):
                        check=True)
         paths.append(path)
     out = render_slideshow(paths, {"shots": ["a", "b", "c"]},
-                           tmp_path / "mixed.mp4", music_path=music, **SMALL)
+                           tmp_path / "mixed.mp4", music_path=music,
+                           transition_seconds=0, end_card_seconds=0, **SMALL)
     info = probe(out)
     assert (info["width"], info["height"]) == (180, 320)
     assert info["duration"] == pytest.approx(1.8, abs=0.15)
@@ -203,7 +204,8 @@ def test_render_produces_a_vertical_video_with_audio(tmp_path, images, music):
     out = render_slideshow(images, {"hook": "Hook here",
                                     "shots": ["one", "two", "three"],
                                     "cta": "Link in bio"},
-                           tmp_path / "ad.mp4", music_path=music, **SMALL)
+                           tmp_path / "ad.mp4", music_path=music,
+                           transition_seconds=0, end_card_seconds=0, **SMALL)
     info = probe(out)
     assert (info["width"], info["height"]) == (180, 320)
     assert info["has_audio"]
@@ -236,7 +238,8 @@ def test_a_music_bed_shorter_than_the_ad_is_looped(tmp_path, images):
         handle.setframerate(8000)
         handle.writeframes(b"\x00\x00" * 8000)  # 1 second against a 1.8s ad
     out = render_slideshow(images, {"shots": ["a", "b", "c"]},
-                           tmp_path / "ad.mp4", music_path=short, **SMALL)
+                           tmp_path / "ad.mp4", music_path=short,
+                           transition_seconds=0, end_card_seconds=0, **SMALL)
     assert probe(out)["duration"] == pytest.approx(1.8, abs=0.15)
 
 
@@ -251,7 +254,8 @@ def test_shot_count_is_capped_by_max_seconds(tmp_path, images):
     """A long image list should produce a shorter video, not one nobody
     watches to the end."""
     out = render_slideshow(images * 4, {"shots": ["a"] * 12},
-                           tmp_path / "capped.mp4", max_seconds=1.2, **SMALL)
+                           tmp_path / "capped.mp4", max_seconds=1.2,
+                           transition_seconds=0, end_card_seconds=0, **SMALL)
     assert probe(out)["duration"] == pytest.approx(1.2, abs=0.15)
 
 
@@ -290,6 +294,128 @@ def test_add_captions_burns_into_existing_footage(tmp_path, images):
     out = add_captions(source, [{"text": "burned in", "start": 0.1, "end": 1.0}],
                        tmp_path / "capped.mp4", font_size=12)
     assert probe(out)["duration"] == pytest.approx(probe(source)["duration"], abs=0.2)
+
+
+# ----------------------------------------------------------- polish (v2)
+
+def test_vendored_font_is_preferred_and_present():
+    from shopagent.video.render import VENDORED_FONT
+    assert VENDORED_FONT.exists(), "Poppins-Bold.ttf missing from assets/fonts"
+    assert (VENDORED_FONT.parent / "OFL.txt").exists(), "font licence must ship with it"
+    assert find_font() == str(VENDORED_FONT)
+
+
+def test_placeholder_bed_is_audible_and_labeled(tmp_path):
+    """A silent bed shipped once and read as 'the audio is broken'. The mock
+    bed must carry actual signal, and its labeling must make clear it is not
+    postable music."""
+    import math
+    import struct
+
+    from shopagent.integrations.music_client import MockMusicClient
+    client = MockMusicClient()
+    track = client.search("upbeat")[0]
+    assert "placeholder" in track["title"].lower()
+    assert "placeholder" in track["license"].lower()
+    raw = client.download(track, tmp_path / "bed.wav").read_bytes()[44:]
+    values = struct.unpack(f"<{len(raw) // 2}h", raw)
+    rms = math.sqrt(sum(v * v for v in values) / len(values))
+    assert rms > 100, f"placeholder bed is effectively silent (rms={rms:.1f})"
+
+
+@needs_ffmpeg
+def test_crossfades_shorten_total_by_the_overlap(tmp_path, images):
+    """total = n*d - (n-1)*t (no end card). Wrong math here desyncs the audio
+    trim from the video length."""
+    out = render_slideshow(images, {"shots": ["a", "b", "c"]},
+                           tmp_path / "xf.mp4", transition_seconds=0.2,
+                           end_card_seconds=0, **SMALL)
+    assert probe(out)["duration"] == pytest.approx(3 * 0.6 - 2 * 0.2, abs=0.15)
+
+
+@needs_ffmpeg
+def test_zero_transition_restores_hard_cut_length(tmp_path, images):
+    out = render_slideshow(images, {"shots": ["a", "b", "c"]},
+                           tmp_path / "cuts.mp4", transition_seconds=0,
+                           end_card_seconds=0, **SMALL)
+    assert probe(out)["duration"] == pytest.approx(1.8, abs=0.15)
+
+
+@needs_ffmpeg
+def test_end_card_extends_the_video(tmp_path, images, music):
+    with_card = render_slideshow(images, {"shots": ["a"], "cta": "Link in bio"},
+                                 tmp_path / "card.mp4", music_path=music,
+                                 brand_name="FurrFlow", transition_seconds=0,
+                                 end_card_seconds=1.0, **SMALL)
+    without = render_slideshow(images, {"shots": ["a"], "cta": "Link in bio"},
+                               tmp_path / "nocard.mp4", music_path=music,
+                               transition_seconds=0, end_card_seconds=0, **SMALL)
+    assert (probe(with_card)["duration"] - probe(without)["duration"]
+            == pytest.approx(1.0, abs=0.2))
+
+
+@needs_ffmpeg
+def test_end_card_needs_something_to_say(tmp_path, images):
+    """No brand name and no CTA -> no card, not a blank colored frame."""
+    out = render_slideshow(images, {"shots": ["a"]}, tmp_path / "plain.mp4",
+                           brand_name="", transition_seconds=0,
+                           end_card_seconds=1.5, **SMALL)
+    assert probe(out)["duration"] == pytest.approx(3 * 0.6, abs=0.15)
+
+
+@needs_ffmpeg
+def test_audio_still_matches_video_with_crossfades_and_card(tmp_path, images, music):
+    """The v1 -shortest bug, re-checked against the v2 duration math."""
+    out = render_slideshow(images, {"shots": ["a", "b", "c"], "cta": "Go"},
+                           tmp_path / "sync.mp4", music_path=music,
+                           brand_name="FurrFlow", transition_seconds=0.2,
+                           end_card_seconds=1.0, **SMALL)
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration",
+         "-of", "csv=p=0", str(out)], capture_output=True, text=True, check=True)
+    durations = dict(line.split(",") for line in result.stdout.strip().splitlines())
+    assert float(durations["audio"]) == pytest.approx(float(durations["video"]),
+                                                      abs=0.1)
+
+
+@needs_ffmpeg
+def test_voiceover_mixes_over_a_ducked_bed(tmp_path, images, music):
+    """Any second audio file works as the 'voice' here — the claim under test
+    is the mixing path, not TTS itself."""
+    from shopagent.integrations.music_client import MockMusicClient
+    voice = MockMusicClient().download(
+        {"id": "voice", "duration": 3}, tmp_path / "voice.wav")
+    out = render_slideshow(images, {"shots": ["a", "b", "c"]},
+                           tmp_path / "vox.mp4", music_path=music,
+                           voice_path=voice, transition_seconds=0,
+                           end_card_seconds=0, **SMALL)
+    info = probe(out)
+    assert info["has_audio"]
+    assert info["duration"] == pytest.approx(1.8, abs=0.15)
+
+
+def test_speech_text_flattens_a_script_with_pauses():
+    from shopagent.video.voice import script_to_speech_text
+    text = script_to_speech_text({"hook": "Stop the gulping",
+                                  "shots": ["Slows meals", {"text": "Grips the tub"}],
+                                  "cta": "Link in bio"})
+    assert text == "Stop the gulping. Slows meals. Grips the tub. Link in bio."
+
+
+def test_voice_fails_softly_when_edge_tts_is_absent(tmp_path, monkeypatch):
+    import builtins
+
+    from shopagent.video.voice import VoiceError, synthesize
+    real_import = builtins.__import__
+
+    def block_edge_tts(name, *args, **kwargs):
+        if name == "edge_tts":
+            raise ImportError("not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", block_edge_tts)
+    with pytest.raises(VoiceError, match="pip install -e .\\[voice\\]"):
+        synthesize("hello", tmp_path / "v.mp3")
 
 
 # ------------------------------------------------------------------ sourcing

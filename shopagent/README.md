@@ -306,13 +306,34 @@ CSV needs a `label` column; `kind`, `metric`, and `note` are used if present.
 If you later subscribe to an analytics API, it writes through the same table
 and nothing downstream changes.
 
+### Hearing real music (2 minutes)
+
+Without a music key, renders get an **audible placeholder tone** — clearly
+synthetic on purpose, so you can judge pacing but would never post it. For real
+tracks: sign up free at **devportal.jamendo.com**, create an app, copy the
+client id into `.env` as `JAMENDO_CLIENT_ID`. That's the whole setup; the next
+render pulls licensed royalty-free music matched to the agent's mood query.
+
 ### What the renderer does
 
-Vertical 1080×1920, one shot per product photo, a slow pan across each (the
-direction alternates), the hook boxed over the opening, a caption per shot, a
-CTA at the end, and a music bed trimmed to the exact video length. Shot count is
-capped by `video.max_seconds` so a long photo list yields a shorter ad rather
-than one nobody finishes.
+Vertical 1080×1920, one shot per product photo with a slow camera move
+(square supplier photos are shown whole over a blurred backdrop rather than
+cropped), 0.4s crossfades between shots, the hook in a brand-colored box over
+the opening, a caption per shot, a closing brand card carrying the CTA, and a
+music bed trimmed to the exact video length. Captions render in a bundled
+Poppins Bold (SIL OFL) so the type looks the same on every machine. Shot count
+is capped by `video.max_seconds` so a long photo list yields a shorter ad
+rather than one nobody finishes.
+
+Tune it in `config.yaml` under `video:` — `brand_name` and `accent_color`
+(hook box + end card), `transition_seconds` (0 = hard cuts),
+`end_card_seconds` (0 = no card), `seconds_per_shot`, `music_volume`, font
+sizes.
+
+An experimental **voiceover** exists behind `pip install -e .[voice]` and
+`video.voiceover: true` — it narrates the script via Microsoft's free TTS and
+ducks the music under it. The endpoint is unofficial; if synthesis fails the
+render continues music-only and says so.
 
 Editing helpers for footage you shot yourself, in `inbox/footage/`: `trim`,
 `add_captions` (burned in — TikTok ignores sidecar subtitles), and `swap_audio`.
@@ -320,8 +341,17 @@ Editing helpers for footage you shot yourself, in `inbox/footage/`: `trim`,
 Deliberately **not** AI-generated video: it cannot show your actual product, and
 a generated dog using a generated lick mat misrepresents what ships.
 
-Tune the look in `config.yaml` under `video:` — `seconds_per_shot`,
-`max_seconds`, `music_volume`, font sizes.
+### Polishing beyond the renderer
+
+The mp4 imports cleanly into the tools people actually finish TikToks in — use
+them on top of the render rather than expecting the renderer to be an editor:
+
+- **CapCut** (free, TikTok's own editor): trending templates, auto-captions,
+  effects — and the natural place to add the Commercial Music Library sound
+  when you post.
+- **Canva** (you already use it): intro/outro cards, logo overlays.
+- **remove.bg** (you already use it): cleaner product stills in = cleaner ad
+  out. The renderer can only be as good as the photos.
 
 ## Remote control from your phone (n8n)
 

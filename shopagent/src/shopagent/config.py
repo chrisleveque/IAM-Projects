@@ -42,6 +42,11 @@ class VideoConfig(BaseModel):
     music_volume: float = 0.5
     font_size_hook: int = 78
     font_size_caption: int = 56
+    brand_name: str = "FurrFlow"        # shown on the closing card
+    accent_color: str = "0x5BC8AC"      # hook box + end-card (ffmpeg 0xRRGGBB)
+    transition_seconds: float = 0.4     # crossfade between shots; 0 = hard cuts
+    end_card_seconds: float = 1.5       # 0 disables the closing brand card
+    voiceover: bool = False             # experimental; needs `pip install -e .[voice]`
 
 
 class PricingConfig(BaseModel):
