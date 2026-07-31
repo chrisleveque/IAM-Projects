@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -254,6 +255,128 @@ def test_upload_of_a_missing_file_fails(store, cfg, shopify, cj, tiktok, tmp_pat
     store.decide_approval(1, "approved")
     approval = Executor(store, cfg, shopify, cj, tiktok=tiktok).execute(1)
     assert approval.status == "failed" and "video not found" in approval.error
+
+
+# ------------------------------------------------------- json2video engine
+
+class RepairAI:
+    """Stands in for AIClient in the repair loop: returns the movie with the
+    'broken' property stripped, and records what it was asked."""
+
+    def __init__(self, fix=True):
+        self.fix = fix
+        self.requests: list[dict] = []
+
+    def complete_json(self, system, user, max_tokens=None):
+        payload = json.loads(user)
+        self.requests.append(payload)
+        if not self.fix:
+            return {}
+        movie = payload["movie"]
+        for scene in movie["scenes"]:
+            for element in scene["elements"]:
+                element.pop("zoom", None)
+        return movie
+
+
+def _propose_render(store, product_id):
+    store.propose(Approval(
+        action_type="tiktok.render_video", agent="content", title="render",
+        payload={"product_id": product_id, "script": SCRIPT,
+                 "music_query": "upbeat"},
+        ref_table="products", ref_id=product_id))
+    store.decide_approval(1, "approved")
+
+
+def _engine_cfg(cfg):
+    cfg.video.engine = "json2video"
+    return cfg
+
+
+def test_json2video_engine_renders_without_ffmpeg(store, cfg, music, shopify, cj,
+                                                  listed_product, monkeypatch):
+    from shopagent.integrations.json2video_client import MockJSON2VideoClient
+    monkeypatch.setenv("JSON2VIDEO_API_KEY", "k")
+    j2v = MockJSON2VideoClient()
+    _propose_render(store, listed_product["id"])
+    approval = Executor(store, _engine_cfg(cfg), shopify, cj, music=music,
+                        json2video=j2v).execute(1)
+    assert approval.status == "executed", approval.error
+    result = json.loads(approval.result)
+    assert result["engine"] == "json2video"
+    assert result["credits"] == 60
+    assert "Commercial Music Library" in result["before_posting"]
+    # the movie was built from the product's real photo URLs
+    sources = [s["elements"][0]["src"] for s in j2v.movies[0]["scenes"][:2]]
+    assert sources == listed_product["urls"]
+    product = store.get_product(listed_product["id"])
+    assert product["tiktok_status"] == "rendered"
+
+
+def test_repair_loop_fixes_a_rejected_movie(store, cfg, shopify, cj,
+                                            listed_product, monkeypatch):
+    from shopagent.integrations.json2video_client import MockJSON2VideoClient
+    monkeypatch.setenv("JSON2VIDEO_API_KEY", "k")
+    j2v = MockJSON2VideoClient(fail_times=1)
+    ai = RepairAI()
+    _propose_render(store, listed_product["id"])
+    approval = Executor(store, _engine_cfg(cfg), shopify, cj,
+                        json2video=j2v, ai=ai).execute(1)
+    assert approval.status == "executed", approval.error
+    result = json.loads(approval.result)
+    assert result["engine"] == "json2video"
+    assert result["repaired_after"] == ["Invalid property 'zoom' in element 1"]
+    # the model saw the error and the movie, and its fix went back out
+    assert ai.requests[0]["error"].startswith("Invalid property")
+    assert "zoom" not in json.dumps(j2v.movies[-1])
+
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="fallback renders with ffmpeg")
+def test_repair_exhausted_falls_back_to_ffmpeg(store, cfg, shopify, cj,
+                                               stub_images, monkeypatch):
+    from shopagent.integrations.json2video_client import MockJSON2VideoClient
+    monkeypatch.setenv("JSON2VIDEO_API_KEY", "k")
+    cfg.video.width, cfg.video.height = 180, 320
+    cfg.video.seconds_per_shot, cfg.video.fps = 0.6, 10
+    j2v = MockJSON2VideoClient(fail_times=99)  # never succeeds
+    _propose_render(store, stub_images["id"])
+    approval = Executor(store, _engine_cfg(cfg), shopify, cj,
+                        json2video=j2v, ai=RepairAI()).execute(1)
+    assert approval.status == "executed", approval.error
+    result = json.loads(approval.result)
+    assert result["engine"] == "ffmpeg"
+    assert "repair_errors" in result and len(result["repair_errors"]) == 3
+    assert Path(result["video_path"]).exists()
+
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="fallback renders with ffmpeg")
+def test_no_ai_means_one_attempt_then_fallback(store, cfg, shopify, cj,
+                                               stub_images, monkeypatch):
+    from shopagent.integrations.json2video_client import MockJSON2VideoClient
+    monkeypatch.setenv("JSON2VIDEO_API_KEY", "k")
+    cfg.video.width, cfg.video.height = 180, 320
+    cfg.video.seconds_per_shot, cfg.video.fps = 0.6, 10
+    j2v = MockJSON2VideoClient(fail_times=99)
+    _propose_render(store, stub_images["id"])
+    approval = Executor(store, _engine_cfg(cfg), shopify, cj,
+                        json2video=j2v, ai=None).execute(1)
+    assert approval.status == "executed", approval.error
+    result = json.loads(approval.result)
+    assert result["engine"] == "ffmpeg"
+    assert len(result["repair_errors"]) == 1  # no ai: no repair attempts
+
+
+def test_mock_music_url_is_never_sent_to_the_cloud_renderer(
+        store, cfg, music, shopify, cj, listed_product, monkeypatch):
+    """mock:// placeholder URLs aren't fetchable by their servers; sending one
+    would fail the whole render for a reason the operator can't see."""
+    from shopagent.integrations.json2video_client import MockJSON2VideoClient
+    monkeypatch.setenv("JSON2VIDEO_API_KEY", "k")
+    j2v = MockJSON2VideoClient()
+    _propose_render(store, listed_product["id"])
+    Executor(store, _engine_cfg(cfg), shopify, cj, music=music,
+             json2video=j2v).execute(1)
+    assert "elements" not in j2v.movies[0]  # no movie-level audio track
 
 
 # ------------------------------------------------------------------- store

@@ -20,7 +20,7 @@ from .store import Approval, Store
 
 class Executor:
     def __init__(self, store: Store, cfg: AppConfig, shopify, cj, amazon=None,
-                 music=None, tiktok=None):
+                 music=None, tiktok=None, json2video=None, ai=None):
         self.store = store
         self.cfg = cfg
         self.shopify = shopify
@@ -28,6 +28,11 @@ class Executor:
         self.amazon = amazon
         self.music = music
         self.tiktok = tiktok
+        self.json2video = json2video
+        # optional LLM, used ONLY to repair rejected render specs — the
+        # executor never lets a model decide WHAT to execute, that stays with
+        # the approvals queue
+        self.ai = ai
         self._dispatch = {
             "shopify.create_product": self._shopify_create_product,
             "shopify.update_product": self._shopify_update_product,
@@ -145,15 +150,27 @@ class Executor:
 
     # ------------------------------------------------------------- tiktok
 
+    REPAIR_SYSTEM = (
+        "You fix rejected JSON2Video movie specifications. You are given the "
+        "API's error message and the movie JSON that produced it. Return ONLY "
+        "the corrected movie JSON object — same structure, minimal changes, "
+        "no commentary. Typical fixes: remove or rename an unsupported "
+        "property, shorten text that overflows an element, replace an invalid "
+        "enum value with a documented one, drop a broken element entirely. "
+        "Never invent new media URLs and never change which product photos "
+        "are shown."
+    )
+
     def _tiktok_render_video(self, approval: Approval) -> dict:
         """Render a vertical ad from the product's supplier photos.
 
-        Rendering is deliberately not gated on any TikTok credential — the mp4
-        lands in output/video/ and can be uploaded by hand. Uploading to drafts
-        is a separate, optional action.
+        Engine comes from cfg.render_engine(): the JSON2Video cloud editor
+        when a key is configured (with a bounded LLM repair loop and an
+        ffmpeg fallback), else the local ffmpeg renderer. Rendering is
+        deliberately not gated on any TikTok credential — the mp4 lands in
+        output/video/ and can be uploaded by hand. Uploading to drafts is a
+        separate, optional action.
         """
-        from .video.render import Script, fetch_images, render_slideshow
-
         p = approval.payload
         product = self.store.get_product(int(p["product_id"]))
         if product is None:
@@ -164,10 +181,98 @@ class Executor:
                 f"product {product['name']!r} has no saved photos to build a video "
                 "from; run `shopagent products import` to attach supplier images")
 
-        video_cfg = self.cfg.video
         slug = re.sub(r"[^a-z0-9]+", "-", product["name"].lower()).strip("-")[:50]
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         out_dir = self.cfg.output_dir / "video"
+        out_path = out_dir / f"{stamp}_{slug}.mp4"
+
+        result: dict | None = None
+        if self.cfg.render_engine() == "json2video" and self.json2video is not None:
+            result = self._render_json2video(p, image_urls, out_path)
+        if result is None:
+            fallback_note = None if self.cfg.render_engine() == "ffmpeg" else (
+                "json2video failed after repair attempts; rendered with the "
+                "local ffmpeg engine instead — see repair_errors")
+            ffmpeg_result = self._render_ffmpeg(p, image_urls, out_dir, out_path,
+                                                stamp, slug)
+            if fallback_note and hasattr(self, "_last_repair_errors"):
+                ffmpeg_result["fallback"] = fallback_note
+                ffmpeg_result["repair_errors"] = self._last_repair_errors
+            result = ffmpeg_result
+
+        self.store.update_product(int(p["product_id"]),
+                                  tiktok_status="rendered",
+                                  video_path=result["video_path"])
+        # the bed is safe to render; it is not what makes a paid ad safe
+        result["before_posting"] = (
+            "Swap in a track from TikTok's Commercial Music Library before "
+            "running this as an ad or posting from a Business account.")
+        return result
+
+    def _render_json2video(self, p: dict, image_urls: list[str],
+                           out_path) -> dict | None:
+        """Cloud render with up to 2 LLM repair attempts. Returns None when it
+        cannot produce a video, so the caller falls back to ffmpeg."""
+        from .integrations.json2video_client import (JSON2VideoError,
+                                                     build_movie)
+
+        video_cfg = self.cfg.video
+        music_url = ""
+        track = None
+        query = p.get("music_query", "")
+        if query and self.music is not None:
+            results = self.music.search(query, limit=5)
+            # the cloud renderer fetches media itself, so only a public URL
+            # helps it; a mock:// placeholder would fail the whole render
+            for candidate in results:
+                if str(candidate.get("url", "")).startswith("http"):
+                    track = candidate
+                    music_url = candidate["url"]
+                    break
+
+        movie = build_movie(
+            p["script"], image_urls,
+            width=video_cfg.width, height=video_cfg.height,
+            seconds_per_shot=video_cfg.seconds_per_shot,
+            max_seconds=video_cfg.max_seconds,
+            brand_name=video_cfg.brand_name,
+            accent_color=video_cfg.accent_color,
+            music_url=music_url, voiceover=video_cfg.voiceover)
+
+        errors: list[str] = []
+        for attempt in range(3):  # first try + 2 repairs
+            try:
+                rendered = self.json2video.render(movie, out_path)
+                result = {"engine": "json2video", "shots": len(image_urls),
+                          "video_path": rendered["video_path"],
+                          "credits": rendered.get("credits")}
+                if errors:
+                    result["repaired_after"] = errors
+                if track:
+                    result["music"] = {"title": track["title"],
+                                       "artist": track["artist"],
+                                       "license": track["license"]}
+                if video_cfg.voiceover:
+                    result["voiceover"] = "narrated by json2video TTS"
+                return result
+            except JSON2VideoError as exc:
+                errors.append(str(exc)[:500])
+                if attempt >= 2 or self.ai is None:
+                    break
+                repaired = self.ai.complete_json(
+                    self.REPAIR_SYSTEM,
+                    json.dumps({"error": str(exc), "movie": movie}))
+                if not isinstance(repaired, dict) or not repaired.get("scenes"):
+                    break  # the model gave nothing usable; stop burning credits
+                movie = repaired
+        self._last_repair_errors = errors
+        return None
+
+    def _render_ffmpeg(self, p: dict, image_urls: list[str], out_dir,
+                       out_path, stamp: str, slug: str) -> dict:
+        from .video.render import Script, fetch_images, render_slideshow
+
+        video_cfg = self.cfg.video
         work = out_dir / f".{stamp}_{slug}_work"
         images = fetch_images(image_urls, work / "img")
         if not images:
@@ -194,7 +299,7 @@ class Executor:
                 voice_note = f"voiceover skipped: {exc}"
 
         out_path = render_slideshow(
-            images, Script.from_dict(p["script"]), out_dir / f"{stamp}_{slug}.mp4",
+            images, Script.from_dict(p["script"]), out_path,
             music_path=music_path, voice_path=voice_path,
             width=video_cfg.width, height=video_cfg.height, fps=video_cfg.fps,
             seconds_per_shot=video_cfg.seconds_per_shot,
@@ -206,10 +311,8 @@ class Executor:
             end_card_seconds=video_cfg.end_card_seconds,
             work_dir=work)
 
-        self.store.update_product(int(p["product_id"]),
-                                  tiktok_status="rendered",
-                                  video_path=str(out_path))
-        result = {"video_path": str(out_path), "shots": len(images)}
+        result = {"engine": "ffmpeg", "video_path": str(out_path),
+                  "shots": len(images)}
         if voice_note:
             result["voiceover"] = voice_note
         elif voice_path:
@@ -221,10 +324,6 @@ class Executor:
                 result["music"]["note"] = (
                     "placeholder tone, not real music — set JAMENDO_CLIENT_ID "
                     "(free at devportal.jamendo.com) for licensed tracks")
-            # the bed is safe to render; it is not what makes a paid ad safe
-            result["before_posting"] = (
-                "Swap in a track from TikTok's Commercial Music Library before "
-                "running this as an ad or posting from a Business account.")
         return result
 
     def _tiktok_upload_draft(self, approval: Approval) -> dict:

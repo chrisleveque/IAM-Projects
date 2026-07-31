@@ -314,7 +314,34 @@ tracks: sign up free at **devportal.jamendo.com**, create an app, copy the
 client id into `.env` as `JAMENDO_CLIENT_ID`. That's the whole setup; the next
 render pulls licensed royalty-free music matched to the agent's mood query.
 
-### What the renderer does
+### Two render engines — set up JSON2Video for the professional one
+
+`tiktok.render_video` picks its engine from `cfg.render_engine()`:
+
+| Engine | When | What you get |
+|---|---|---|
+| **json2video** | `JSON2VIDEO_API_KEY` set (free tier at json2video.com — 600 credits, no card) | Cloud motion-graphics editor: animated text presets, real transitions, built-in TTS voiceover. The professional look, zero editing. |
+| **ffmpeg** | otherwise (or `video.engine: ffmpeg`) | The local renderer described below. Free forever, decent drafts. |
+
+Setup: sign up at json2video.com, copy the API key from the dashboard into
+`.env` as `JSON2VIDEO_API_KEY`. `shopagent doctor` verifies the key with a
+live probe.
+
+Two safety nets sit behind the cloud engine, because its movie spec was
+written from public docs: on a rejected render, an **automated repair loop**
+(Claude reads the API's error plus the movie JSON, patches it, retries — max
+twice), and if that fails, an automatic **fallback to the ffmpeg engine** so
+an approved render always produces a video. The approval result records
+`repaired_after` or `repair_errors` so you can see what happened, and the n8n
+Store Manager is prompted to surface and explain failed renders (retrying
+stays a human decision: `shopagent approvals retry <id>`).
+
+If you eventually want an AI "creator" holding your product and talking about
+it — the current state of the art for dropshipping ads — that's Creatify
+(creatify.ai, ~$33/mo, web app only; their API is enterprise-gated). Worth a
+look once ads are earning; it can't be automated from here yet.
+
+### What the ffmpeg renderer does
 
 Vertical 1080×1920, one shot per product photo with a slow camera move
 (square supplier photos are shown whole over a blurred backdrop rather than
