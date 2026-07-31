@@ -31,6 +31,19 @@ class AmazonConfig(BaseModel):
     default_quantity: int = 20  # FBM stock buffer shown to Amazon
 
 
+class VideoConfig(BaseModel):
+    """Vertical short-form defaults. 1080x1920 is TikTok/Reels/Shorts native;
+    anything else gets letterboxed by the platform."""
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    seconds_per_shot: float = 2.8
+    max_seconds: float = 34.0  # TikTok favors <35s for full-watch rate
+    music_volume: float = 0.5
+    font_size_hook: int = 78
+    font_size_caption: int = 56
+
+
 class PricingConfig(BaseModel):
     markup_multiplier: float = 2.5
     min_margin_usd: float = 3.0
@@ -60,6 +73,7 @@ class AppConfig(BaseModel):
     store: StoreConfig = Field(default_factory=StoreConfig)
     supplier: SupplierConfig = Field(default_factory=SupplierConfig)
     amazon: AmazonConfig = Field(default_factory=AmazonConfig)
+    video: VideoConfig = Field(default_factory=VideoConfig)
     business: BusinessConfig = Field(default_factory=BusinessConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
@@ -107,6 +121,31 @@ class AppConfig(BaseModel):
         if self.mode != "live":
             return "mock"
         if os.environ.get("CJ_EMAIL") and os.environ.get("CJ_API_KEY"):
+            return "live"
+        return "mock"
+
+    def music_mode(self) -> str:
+        """Effective mode for royalty-free music lookup: 'live' or 'mock'.
+
+        Either provider alone is a complete configuration — Jamendo is the
+        documented one, Pixabay is best-effort (see music_client).
+        """
+        if self.mode != "live":
+            return "mock"
+        if os.environ.get("PIXABAY_API_KEY") or os.environ.get("JAMENDO_CLIENT_ID"):
+            return "live"
+        return "mock"
+
+    def tiktok_mode(self) -> str:
+        """Effective mode for TikTok draft upload: 'live' or 'mock'.
+
+        Rendering never depends on this — videos land in output/video/ either
+        way, and uploading to drafts is an optional convenience on top.
+        """
+        if self.mode != "live":
+            return "mock"
+        required = ("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REFRESH_TOKEN")
+        if all(os.environ.get(v) for v in required):
             return "live"
         return "mock"
 

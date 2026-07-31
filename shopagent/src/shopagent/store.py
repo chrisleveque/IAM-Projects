@@ -32,6 +32,8 @@ ACTION_TYPES: dict[str, list[str]] = {
     "amazon.confirm_shipment": ["amazon_order_id", "tracking_number", "carrier_code",
                                 "order_items"],
     "cj.create_order": ["order_ref", "cj_items", "shipping_address", "logistic_name"],
+    "tiktok.render_video": ["product_id", "script"],
+    "tiktok.upload_draft": ["video_path", "caption"],
     "support.send_reply": ["customer_email", "subject", "body"],
     "marketing.publish": ["channel", "title", "body"],
 }
@@ -91,6 +93,23 @@ CREATE TABLE IF NOT EXISTS approvals (
     created_at TEXT NOT NULL,
     decided_at TEXT,
     executed_at TEXT
+);
+
+-- Trend observations imported from inbox/trends/. No public API exposes
+-- trending TikTok Shop products (the official Shop API only reads shops you
+-- own), so these are captured by hand from TikTok Creative Center or a paid
+-- analytics tool and parsed in. Kept as loose rows rather than a rigid schema
+-- because the shape of what gets pasted in varies by source.
+CREATE TABLE IF NOT EXISTS trends (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT DEFAULT '',
+    kind TEXT DEFAULT 'note',
+    label TEXT NOT NULL,
+    metric TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    captured_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE(source, kind, label)
 );
 
 CREATE TABLE IF NOT EXISTS agent_runs (
@@ -156,6 +175,15 @@ class Store:
             if col not in cols:
                 self.conn.execute(
                     f"ALTER TABLE products ADD COLUMN {col} TEXT DEFAULT ''")
+        # tiktok_status: '' | proposed | rendered | uploaded — a third
+        # per-channel state, parallel to amazon_status, so content work never
+        # fights the Shopify pipeline status
+        if "tiktok_status" not in cols:
+            self.conn.execute(
+                "ALTER TABLE products ADD COLUMN tiktok_status TEXT DEFAULT ''")
+        if "video_path" not in cols:
+            self.conn.execute(
+                "ALTER TABLE products ADD COLUMN video_path TEXT DEFAULT ''")
         order_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(orders)")}
         if "channel" not in order_cols:
             self.conn.execute(
@@ -287,6 +315,43 @@ class Store:
         else:
             rows = self.conn.execute("SELECT * FROM orders ORDER BY id").fetchall()
         return [dict(r) for r in rows]
+
+    # --------------------------------------------------------------- trends
+
+    def upsert_trend(self, label: str, source: str = "", kind: str = "note",
+                     metric: str = "", note: str = "", captured_at: str = "") -> int:
+        """Record one trend observation. Re-importing the same file refreshes
+        the metric rather than duplicating the row."""
+        row = self.conn.execute(
+            "SELECT id FROM trends WHERE source = ? AND kind = ? AND label = ?",
+            (source, kind, label)).fetchone()
+        if row:
+            self.conn.execute(
+                "UPDATE trends SET metric = ?, note = ?, captured_at = ? WHERE id = ?",
+                (metric, note, captured_at, row["id"]))
+            self.conn.commit()
+            return row["id"]
+        cur = self.conn.execute(
+            "INSERT INTO trends (source, kind, label, metric, note, captured_at,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (source, kind, label, metric, note, captured_at, _now()))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def list_trends(self, kind: str | None = None, limit: int = 50) -> list[dict]:
+        if kind:
+            rows = self.conn.execute(
+                "SELECT * FROM trends WHERE kind = ? ORDER BY id DESC LIMIT ?",
+                (kind, limit)).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM trends ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def clear_trends(self) -> int:
+        cur = self.conn.execute("DELETE FROM trends")
+        self.conn.commit()
+        return cur.rowcount
 
     # ------------------------------------------------------------ approvals
 

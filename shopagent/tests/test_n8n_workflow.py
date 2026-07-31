@@ -97,6 +97,8 @@ def test_every_query_parameter_is_accepted_by_its_route(workflow, client):
         "get_approval": {"id": "1"},
         "list_products": {"status": "drafted"},
         "list_orders": {"status": "new", "channel": "shopify"},
+        "list_videos": {},
+        "list_trends": {"kind": "hashtag"},
     }
     for node in _tool_nodes(workflow):
         path = _path_of(node)
@@ -132,6 +134,20 @@ def test_documented_parameter_values_are_the_ones_the_api_accepts(workflow, clie
     for value in ("shopify", "amazon"):
         assert value in descriptions["list_orders"]
         assert client.get(f"/orders?channel={value}", headers=AUTH).status_code == 200
+
+    for value in ("hashtag", "format", "product", "sound", "creator", "niche", "note"):
+        assert value in descriptions["list_trends"]
+        assert client.get(f"/trends?kind={value}", headers=AUTH).status_code == 200
+
+
+def test_the_music_licensing_caveat_travels_with_the_video_tool(workflow):
+    """A royalty-free bed is safe in a draft and not safe in a paid ad. The
+    agent has to say so, so the warning lives in the tool description and the
+    system prompt rather than only in the README."""
+    tools = {n["name"]: n["parameters"]["toolDescription"] for n in _tool_nodes(workflow)}
+    assert "Commercial Music Library" in tools["list_videos"]
+    agent = next(n for n in workflow["nodes"] if n["name"] == "Store Manager")
+    assert "Commercial Music Library" in agent["parameters"]["options"]["systemMessage"]
 
 
 def test_every_tool_carries_header_auth(workflow):

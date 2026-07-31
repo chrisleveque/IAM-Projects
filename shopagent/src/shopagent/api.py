@@ -200,6 +200,35 @@ def create_app(cfg: AppConfig | None = None, token: str = "") -> FastAPI:
         finally:
             store.close()
 
+    @app.get("/videos", dependencies=auth)
+    def list_videos() -> dict:
+        """Rendered ads and where they sit on disk, so the phone agent can
+        report what's ready to post without shell access."""
+        store = open_store()
+        try:
+            videos = [
+                {"product_id": p["id"], "name": p["name"],
+                 "tiktok_status": p.get("tiktok_status", ""),
+                 "video_path": p["video_path"], "price": p["proposed_price"]}
+                for p in store.list_products() if p.get("video_path")
+            ]
+            return {"count": len(videos), "videos": videos,
+                    "before_posting": (
+                        "Swap in a TikTok Commercial Music Library track before "
+                        "running any of these as a paid ad.")}
+        finally:
+            store.close()
+
+    @app.get("/trends", dependencies=auth)
+    def list_trends(kind: Optional[str] = Query(None),
+                    limit: int = Query(30, ge=1, le=200)) -> dict:
+        store = open_store()
+        try:
+            trends = store.list_trends(kind=kind, limit=limit)
+            return {"count": len(trends), "trends": trends}
+        finally:
+            store.close()
+
     # --------------------------------------------------------- decision side
 
     def _execute(store: Store, approval_id: int) -> Approval:

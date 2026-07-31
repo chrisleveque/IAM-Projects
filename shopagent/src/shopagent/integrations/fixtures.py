@@ -148,3 +148,51 @@ INBOX_MESSAGES: dict[str, str] = {
         "how big are they when folded?\n"
     ),
 }
+
+# ------------------------------------------------------------- music catalog
+
+# Backs MockMusicClient. Titles/moods are searchable text so the mock's scoring
+# behaves like a real search; every entry is a licence that permits commercial
+# use, matching the filter the live client applies.
+MUSIC_CATALOG: list[dict] = [
+    {"id": "mock:001", "title": "Bright Morning Pop", "artist": "Fixture Audio",
+     "duration": 32, "mood": "upbeat happy energetic pets playful",
+     "license": "CC0", "source": "mock", "url": "mock://001"},
+    {"id": "mock:002", "title": "Soft Lo-Fi Cuddle", "artist": "Fixture Audio",
+     "duration": 28, "mood": "calm cozy warm relaxing sleep bed",
+     "license": "CC BY", "source": "mock", "url": "mock://002"},
+    {"id": "mock:003", "title": "Clean Corporate Uplift", "artist": "Fixture Audio",
+     "duration": 40, "mood": "modern confident product demo commercial",
+     "license": "CC0", "source": "mock", "url": "mock://003"},
+    {"id": "mock:004", "title": "Bouncy Ukulele Walk", "artist": "Fixture Audio",
+     "duration": 25, "mood": "cute fun light playful dog cat",
+     "license": "CC BY", "source": "mock", "url": "mock://004"},
+    {"id": "mock:005", "title": "Deep House Scroll", "artist": "Fixture Audio",
+     "duration": 35, "mood": "trendy viral punchy beat drop",
+     "license": "CC0", "source": "mock", "url": "mock://005"},
+]
+
+# ------------------------------------------------------------- trend notes
+
+# Seeds inbox/trends/ in mock mode so the content agent has something to read
+# before Chris has exported anything real from TikTok Creative Center.
+TREND_NOTES: dict[str, str] = {
+    "2026-07-sample-trends.md": (
+        "# TikTok trend notes — sample\n"
+        "source: TikTok Creative Center (manual export)\n"
+        "captured: 2026-07-29\n\n"
+        "## Hashtags\n"
+        "- #dogtok — 41.2B views, still climbing\n"
+        "- #pettok — 18.9B views\n"
+        "- #dogsoftiktok — 92.4B views, saturated but reliable\n"
+        "- #slowfeeder — 214M views, rising fast in pet niche\n\n"
+        "## Formats working in pet niche\n"
+        "- Before/after on a messy eater, 7-12s, text hook on frame 1\n"
+        "- POV from the dog's angle, low camera\n"
+        "- 'Things my vet recommended' listicle, 3 items max\n\n"
+        "## Notes\n"
+        "This is sample data shipped with shopagent so the agent has something\n"
+        "to reason about. Replace it with a real export before trusting any of\n"
+        "the numbers above.\n"
+    ),
+}

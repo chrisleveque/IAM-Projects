@@ -1,8 +1,9 @@
 # shopagent — an AI agent team for your Shopify dropshipping business
 
-shopagent runs a team of five AI agents (Claude-powered) coordinated by a
+shopagent runs a team of AI agents (Claude-powered) coordinated by a
 deterministic daily pipeline. The agents research products, write listings,
-prepare supplier orders, draft customer replies, and generate marketing copy —
+cross-list to Amazon, prepare supplier orders, draft customer replies, write
+marketing copy, and build vertical video ads —
 **but nothing touches your store, your supplier account, or a customer until
 you approve it.**
 
@@ -50,6 +51,8 @@ What executes what:
 | `cj.create_order` | Real CJ Dropshipping order (costs money) |
 | `support.send_reply` | Writes a copy-ready reply to `output/replies/` (you send it) |
 | `marketing.publish` | Writes content to `output/marketing/` (you post it) |
+| `tiktok.render_video` | Renders a vertical ad to `output/video/` from the product's real photos |
+| `tiktok.upload_draft` | Sends a rendered ad to your TikTok drafts (optional; needs TikTok credentials) |
 
 ## The agents
 
@@ -66,6 +69,10 @@ What executes what:
   shipping dates.
 - **Marketing** — drafts social captions, promo emails, and ad copy grounded
   in the actual listing content of live products.
+- **Amazon** — cross-lists store products onto Amazon as merchant-fulfilled
+  offers, pre-validating each listing before proposing it.
+- **Content** — writes vertical TikTok/Reels ad scripts for listed products
+  and proposes renders built from their real supplier photos.
 
 ## Quickstart (no store credentials needed)
 
@@ -247,6 +254,75 @@ carrier code — when CJ hands off to USPS/UPS last-mile, prefer that code.
   marks blocked listings with notes.
 - The Orders API is rate-limited to ~1 call/minute — sync once, don't hammer.
 
+## TikTok video ads
+
+The content agent writes vertical ad scripts for listed products and proposes
+renders; the executor builds the mp4 on approval, from the product's real
+supplier photos.
+
+```bash
+winget install Gyan.FFmpeg        # Windows — then open a NEW terminal
+shopagent trends import           # parse inbox/trends/ (optional)
+shopagent content draft           # agent writes scripts, proposes renders
+shopagent approvals approve 1     # renders to output/video/
+shopagent content videos          # where the files are
+```
+
+`shopagent doctor` reports whether ffmpeg is on PATH. Nothing else in shopagent
+needs it, so it only blocks video work.
+
+### Three things about this that are not negotiable
+
+**1. Music: royalty-free is not the same as "trending".** The sounds trending on
+TikTok are commercial recordings. Using one on a Business account or in a paid
+ad is a copyright violation, and TikTok mutes or removes the video. The
+sanctioned catalogue is **TikTok's Commercial Music Library** — a million-plus
+pre-cleared tracks, with its own trending section — and it has **no public
+API**; it is only browsable in the app.
+
+So the renderer beds in a royalty-free track from Pixabay or Jamendo, which is
+safe for a draft, and the agent tells you to swap it for a Commercial Music
+Library track before the video runs as an ad. That manual step is the point,
+not a gap.
+
+**2. Auto-posting to TikTok is not realistically available.** The Content
+Posting API's Direct Post mode requires passing a TikTok audit, and TikTok
+rejects audit submissions from apps that read as internal tools or side
+projects. Until an app passes, every direct post is forced to SELF_ONLY — only
+you can see it. **Draft upload needs no audit**, so that is what
+`tiktok.upload_draft` does: the video lands in your TikTok drafts and you post
+it from the app. Credentials are optional; without them the mp4 still renders
+and you upload it by hand.
+
+**3. Trend data is imported by hand.** No public API exposes trending TikTok
+Shop products — the official Shop API only reads shops you already own, and
+scraping TikTok violates its terms and breaks constantly. Export or paste what
+you see in TikTok Creative Center (or a paid tool like Kalodata) into
+`inbox/trends/` as `.md` or `.csv`, then `shopagent trends import`.
+
+Markdown format: `## Section` headings become the category, `- items` become
+rows, and a trailing `— 41.2B views` or `(rising)` is captured as the metric.
+CSV needs a `label` column; `kind`, `metric`, and `note` are used if present.
+If you later subscribe to an analytics API, it writes through the same table
+and nothing downstream changes.
+
+### What the renderer does
+
+Vertical 1080×1920, one shot per product photo, a slow pan across each (the
+direction alternates), the hook boxed over the opening, a caption per shot, a
+CTA at the end, and a music bed trimmed to the exact video length. Shot count is
+capped by `video.max_seconds` so a long photo list yields a shorter ad rather
+than one nobody finishes.
+
+Editing helpers for footage you shot yourself, in `inbox/footage/`: `trim`,
+`add_captions` (burned in — TikTok ignores sidecar subtitles), and `swap_audio`.
+
+Deliberately **not** AI-generated video: it cannot show your actual product, and
+a generated dog using a generated lick mat misrepresents what ships.
+
+Tune the look in `config.yaml` under `video:` — `seconds_per_shot`,
+`max_seconds`, `music_volume`, font sizes.
+
 ## Remote control from your phone (n8n)
 
 `shopagent serve` exposes the pipeline over HTTP so an external automation —
@@ -267,6 +343,8 @@ shopagent serve                 # http://127.0.0.1:8787, docs at /docs
 | `GET` | `/approvals/{id}` | One approval in full, including the exact payload |
 | `GET` | `/products?status=` | Product pipeline |
 | `GET` | `/orders?status=&channel=` | Order pipeline, filterable by channel |
+| `GET` | `/videos` | Rendered ads and where each file is |
+| `GET` | `/trends?kind=` | Imported trend notes |
 | `POST` | `/approvals/{id}/approve` | Approve **and execute** |
 | `POST` | `/approvals/{id}/reject` | Reject, optional `{"note": "..."}` |
 | `POST` | `/approvals/{id}/retry` | Re-execute a failed action |
@@ -348,6 +426,8 @@ desktop.
 | `business.min_candidate_pool` | Daily pipeline researches only below this |
 | `ai.model` / `ai.max_tokens` / `ai.max_tool_iterations` | Agent model settings |
 | `supplier.ship_to_country` | Country used for freight quotes |
+| `video.seconds_per_shot` / `video.max_seconds` | Ad pacing and length cap |
+| `video.music_volume` / `video.font_size_*` | Soundtrack level and caption sizing |
 
 ## Project layout
 
@@ -359,6 +439,8 @@ src/shopagent/
 ├── api.py            # HTTP API for n8n/phone: reads + approval decisions
 ├── executor.py       # the ONLY code that performs external actions
 ├── orchestrator.py   # deterministic daily pipeline
+├── trends.py         # parses inbox/trends/ exports into the trends table
+├── video/render.py   # ffmpeg: vertical ad rendering + trim/caption/audio edits
 ├── ai/client.py      # Anthropic wrapper + manual tool-use loop
 ├── agents/           # base + research, listings, fulfillment, support, marketing
 └── integrations/     # Shopify GraphQL client, CJ API client, + mocks/fixtures
