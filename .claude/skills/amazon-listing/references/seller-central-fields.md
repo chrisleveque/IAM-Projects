@@ -173,6 +173,19 @@ spreadsheet and re-uploading — and its dropdowns show the exact accepted
 values, which is the reliable way to resolve select-from-list attributes
 (Breed Recommendation, Specific Uses for Product) rather than guessing.
 
+Traps seen on this screen in real uploads:
+
+- Once the GTIN exemption is on file, the identifier errors vanish and the
+  remaining errors are ordinary required attributes the spreadsheet left
+  blank (for PET_FEEDER: Capacity + Capacity Unit on every row, parent
+  included). Fill them inline; no re-upload.
+- The unit dropdown offers both **millimeters** and **Milliliters** and they
+  are one letter apart. A capacity of "100 millimeters" is rejected as a
+  length; the volume spelling with *liter* is the valid one.
+- "Focus on errors" with zero errors renders an almost-empty grid (only the
+  example row). That is success, not a broken page — check the Ready to
+  submit counter, then Submit.
+
 ### Images
 
 Images are **not** part of the spreadsheet. Create the products first, then
