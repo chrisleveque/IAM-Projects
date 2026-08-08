@@ -56,3 +56,35 @@ Generation plan (when Higgsfield is back):
 2. balance check FIRST — 10 videos is a real credit spend
 3. Generate ad #1 alone as a validation pass; judge it before batching
 4. Batch the remaining 9 via generate_video_batch + jobs_wait
+
+# Run report — 2026-08-08 (stopped at step 2: insufficient credits)
+
+Workflow identified: `ugc-flow` (talking-head UGC pipeline; Seedance 2.0
+clips seeded from gpt_image_2 storyboards + a soul_2 creator image, with a
+mandatory seedream_v5_pro de-slop pass). Pinned settings: 9:16, 1080p,
+one 15s clip per ad at our 15s duration (N=1 board).
+
+Balance at check time: **110 credits** (Plus plan). Measured per-ad cost at
+pinned settings (get_cost preflights, 15s ad):
+
+| Component | Model | Credits |
+|---|---|---|
+| Creator image (reusable across ads) | soul_2, 3:4, 2k | ~0.12 |
+| Storyboard (1 per 15s ad) | gpt_image_2, 16:9, 2k high | 7 |
+| De-slop pass (1 per board) | seedream_v5_pro, 16:9, 2k | 3 |
+| Video clip, 15s | seedance_2_0, 9:16, 1080p | 135 |
+| **Per ad (1080p)** | | **~145** |
+
+- All 10 ads at 1080p: **~1,450 credits** (+ re-rolls for QA failures).
+- Cheaper options measured: 15s clip at **720p = 67.5** (~78/ad, ~780 for
+  10); 10s clip at 1080p = 90. Seedance 2.0 supports unlim generations but
+  no unlim trial is active on this account (`unlim.available: false`).
+- Blocker: 110 credits cannot cover even the ad #1 validation pass at the
+  pinned 1080p spec (~145). Nothing was generated; no credits were spent.
+- Product photos: not in the repo and no direct image URLs on hand — the
+  four CJ listing photos (pid 2036693145205379073) must be attached or
+  linked before the product-intake step can run.
+
+Next session: top up (or approve 720p ≈ 78 credits for ad #1, or start the
+unlim trial), provide the 4 product photos, then resume at step 3
+(ad #1 validation pass) with `ugc-flow` loaded.
