@@ -1,0 +1,227 @@
+# FurrFlow Calming Donut Bed — Veo UGC campaign (10 ads, 2x8s clips each).
+# Source plan: marketing/ugc-ads-donut-bed.md. Run with `shopagent veo`.
+#
+# Editing rules:
+# - Every claim must trace to product truth: calming donut shape, ultra-soft
+#   plush, supportive rim, non-slip bottom, machine washable, 23.6", for
+#   small dogs & cats. No invented authorities, no fabricated stats, no
+#   before/after medical claims. Personas are stylized creators, not fake
+#   named customers.
+# - An ad's two clips share `creator` verbatim — that text plus the product
+#   reference photo is the continuity contract between clips.
+# - Dialogue is in single quotes inside prompts; keep it under ~22 words per
+#   8s clip or Veo rushes the read.
+# - No on-screen text in prompts: captions/CTA overlays are burned in post,
+#   and paid-TikTok music is swapped in post (Commercial Music Library).
+
+product: >
+  FurrFlow Calming Donut Bed, a 23.6-inch round plush pet bed for small dogs
+  and cats with a supportive raised rim, non-slip bottom, and machine-washable
+  cover. Colors: pink, light grey, brown, dark grey.
+
+style_prefix: >
+  Vertical 9:16 smartphone UGC video shot on a handheld iPhone front camera.
+  Natural indoor lighting, slightly imperfect amateur framing, realistic skin
+  texture, authentic creator energy. The creator speaks directly to camera in
+  a casual, natural American accent. Room-tone audio only — no background
+  music, no on-screen text, no captions, no logos or watermarks. The fluffy
+  round donut pet bed from the reference image appears exactly as shown.
+
+photos:
+  pink: assets/donut-bed/pink.jpg
+  light-grey: assets/donut-bed/light-grey.jpg
+  brown: assets/donut-bed/brown.jpg
+  dark-grey: assets/donut-bed/dark-grey.jpg
+
+ads:
+  - id: 1
+    title: Playful betrayal — dog left my bed for the donut
+    color: brown
+    creator: A woman in her late 20s with wavy brown hair in a messy bun,
+      wearing an oversized cream knit sweater, in a cozy warm-lit bedroom
+      with fairy lights and linen bedding.
+    clips:
+      - prompt: >-
+          She sits on the edge of her bed looking mock-offended,
+          glancing down at a brown fluffy donut pet bed on the rug where a
+          small scruffy terrier is curled up fast asleep. She says to camera,
+          'My dog slept in my bed every single night for three years. Then
+          THIS thing showed up.' She gestures accusingly at the sleeping dog.
+      - prompt: >-
+          She kneels next to the brown donut bed where the small
+          terrier rests its chin on the raised plush rim like a pillow. She
+          sinks her hand slowly into the fluffy rim and says to camera,
+          'The rim is literally his pillow now. And honestly? I get it.
+          It's stupidly soft. Link in bio.' She shrugs and smiles.
+
+  - id: 2
+    title: Velcro dog finally settles — non-slip on hardwood
+    color: dark-grey
+    creator: A man in his early 30s with a short beard and a charcoal hoodie,
+      in a bright modern living room with light wood floors and a grey couch.
+    clips:
+      - prompt: >-
+          He sits on his couch while a small beagle stares up at him
+          adoringly from his feet. He says to camera, 'If your dog follows
+          you into every single room — bathroom included — watch this.' He
+          points across the room to a dark grey fluffy donut pet bed sitting
+          on the wood floor.
+      - prompt: >-
+          The small beagle lies settled and relaxed inside the dark
+          grey donut bed on the wood floor. He crouches beside it, nudges the
+          bed's edge with his palm to show it doesn't slide, and says to
+          camera, 'He actually stays put now. Non-slip bottom, so it's not
+          surfing across my hardwood. Link in bio.'
+
+  - id: 3
+    title: Things in my apartment that just make sense — pet edition
+    color: light-grey
+    creator: A woman in her mid 20s with a sleek dark ponytail and gold hoop
+      earrings, wearing a sage green lounge set, in a bright aesthetic
+      apartment with beige tones, arched mirror, and pampas grass decor.
+    clips:
+      - prompt: >-
+          She walks through her apartment holding the camera selfie-
+          style and says, 'Things in my apartment that just make sense — pet
+          edition. Three: lint roller by the door. Two: washable couch
+          cover.' Quick natural pans to a lint roller on an entry table and
+          a neatly covered couch as she counts down.
+      - prompt: >-
+          She kneels by a light grey fluffy donut pet bed in the
+          corner where a grey tabby cat is curled up. She presses one finger
+          slowly into the plush fur, letting it sink deep and spring back,
+          and says, 'One: this donut bed. My cat hasn't left it since
+          Tuesday. Link in bio.'
+
+  - id: 4
+    title: Why donut beds are round — curling instinct explainer
+    color: pink
+    creator: A woman in her early 30s with curly auburn hair and round
+      glasses, wearing a mustard cardigan, in a sunny plant-filled corner of
+      an apartment with golden afternoon light.
+    clips:
+      - prompt: >-
+          She sits cross-legged in the sunny corner next to a pink
+          fluffy donut pet bed where a white long-haired cat is curled in a
+          perfect circle. She says to camera, 'I was today years old when I
+          learned why donut beds are round. Cats curl up by instinct — it
+          keeps them warm and feels safe.'
+      - prompt: >-
+          Close over-the-shoulder angle on the white cat nestled
+          against the pink bed's raised plush rim, the creator's hand gently
+          resting on the rim. She says to camera, 'The raised rim is the
+          whole trick — it wraps around her like a hug. She's been here all
+          morning. Link in bio.'
+
+  - id: 5
+    title: Attempt number seven — the serial bed returner
+    color: light-grey
+    creator: A deadpan woman in her late 20s with straight black shoulder-
+      length hair, wearing a plain white tee, in a minimal bedroom with white
+      walls and a low platform bed.
+    clips:
+      - prompt: >-
+          She stands with arms crossed looking tiredly at the camera,
+          a light grey fluffy donut pet bed on the floor beside her. She
+          says flatly, 'My cat rejected every single bed I bought her. This
+          is attempt number seven.' An orange tabby cat approaches the bed
+          slowly and sniffs its rim, suspicious.
+      - prompt: >-
+          The orange tabby stands inside the light grey donut bed,
+          kneading the plush fur with its front paws, then turns twice and
+          settles down into the rim. She whispers to camera, hand over her
+          mouth in disbelief, 'She kneaded it for a full minute... and
+          settled. Seven beds. FINALLY. Link in bio.'
+
+  - id: 6
+    title: Laundry day — the bed that survives the wash
+    color: brown
+    creator: A woman in her early 30s with box braids in a high bun, wearing
+      a striped button-down with rolled sleeves, in a small bright laundry
+      room with a white front-loading washing machine.
+    clips:
+      - prompt: >-
+          She stands by the open washing machine holding a brown
+          fluffy donut pet bed and says to camera, 'POV: it's laundry day,
+          and your dog's bed actually survives the wash.' She pushes the bed
+          into the drum with a satisfying shove and shuts the door.
+      - prompt: >-
+          She pulls the brown donut bed out of the washer and fluffs
+          it up with both hands — still plush and full. She sets it on the
+          floor and a small French bulldog trots in and climbs straight
+          into it. She says, 'Machine washable, still fluffy. And sir wasted
+          zero time moving back in. Link in bio.'
+
+  - id: 7
+    title: Rating things I bought for my anxious dog
+    color: dark-grey
+    creator: A man in his late 20s with tousled sandy hair and a flannel
+      shirt over a white tee, sitting on a brown leather couch in a warm
+      evening-lit living room.
+    clips:
+      - prompt: >-
+          He sits on the couch talking to camera like a review show
+          host, holding up one finger. He says, 'Rating things I bought for
+          my anxious dog. This donut bed? Ten out of ten, and here's the
+          one reason.' A dark grey fluffy donut pet bed sits on the floor
+          in front of the couch.
+      - prompt: >-
+          Slow handheld push-in on a small dachshund curled tightly
+          into the dark grey donut bed, nose tucked against the raised plush
+          rim, fully relaxed. From behind the camera he says, 'He does this
+          little cuddle-curl right into the rim. The calming shape actually
+          works for him. Link in bio.'
+
+  - id: 8
+    title: The 23-inch rule — tape measure gag
+    color: brown
+    creator: A man in his mid 30s with short dark hair and a navy crewneck,
+      in a hallway and bedroom corner of a tidy craftsman-style home.
+    clips:
+      - prompt: >-
+          He crouches in the hallway comically stretching a yellow
+          tape measure alongside a small corgi lying on the floor, squinting
+          like it's serious engineering. He says to camera, 'Nobody tells
+          you the 23-inch rule for small dogs. Watch.'
+      - prompt: >-
+          In the bedroom corner he stretches the tape measure across
+          a brown fluffy donut pet bed while the corgi steps in and curls
+          up inside it. He says to camera, 'Twenty-three point six inches —
+          room to curl up, rim all the way around. Perfect fit. Link in
+          bio.' He taps the tape measure, satisfied.
+
+  - id: 9
+    title: My senior cat picked the pink one
+    color: pink
+    creator: A woman in her 40s with a silver-streaked bob and a denim
+      shirt, in a bright airy living room with white shelving and plants.
+    clips:
+      - prompt: >-
+          She stands over a pink fluffy donut pet bed and says to
+          camera, 'It comes in four colors — pink, light grey, brown, dark
+          grey. Guess which one my fifteen-year-old cat claimed.' She
+          raises an eyebrow knowingly at the pink bed.
+      - prompt: >-
+          A fluffy senior calico cat sits regally in the center of
+          the pink donut bed, slow-blinking at the camera. The creator
+          kneels beside it and says, 'Fifteen years old and she has better
+          taste than me. The pink one. Obviously. Link in bio.' She gently
+          strokes the cat's head.
+
+  - id: 10
+    title: Flip it over first — the skeptic's non-slip test
+    color: dark-grey
+    creator: A skeptical-faced man in his early 30s with a buzz cut and a
+      plain black tee, in a clean kitchen with white tile flooring.
+    clips:
+      - prompt: >-
+          He holds a dark grey fluffy donut pet bed up to the camera
+          and says, 'Don't buy a donut bed until you flip it over.' He flips
+          the bed to show its underside to the lens, tapping the textured
+          non-slip base with two fingers.
+      - prompt: >-
+          He sets the dark grey donut bed on the white kitchen tile
+          and gives it a firm sideways push with his palm — it barely moves.
+          He looks up at the camera and says, 'See that grippy bottom?
+          That's what keeps it planted on tile. That's the whole game.
+          Link in bio.'

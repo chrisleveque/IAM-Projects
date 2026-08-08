@@ -29,6 +29,8 @@ content_app = typer.Typer(help="Short-form video ads (TikTok/Reels).", no_args_i
 trends_app = typer.Typer(help="Trend notes imported from inbox/trends/.",
                          no_args_is_help=True)
 music_app = typer.Typer(help="Royalty-free music search.", no_args_is_help=True)
+veo_app = typer.Typer(help="UGC video ads generated with Google Veo (Gemini API).",
+                      no_args_is_help=True)
 app.add_typer(approvals_app, name="approvals")
 app.add_typer(orders_app, name="orders")
 app.add_typer(products_app, name="products")
@@ -36,6 +38,7 @@ app.add_typer(cj_app, name="cj")
 app.add_typer(content_app, name="content")
 app.add_typer(trends_app, name="trends")
 app.add_typer(music_app, name="music")
+app.add_typer(veo_app, name="veo")
 
 console = Console()
 
@@ -837,6 +840,153 @@ def products_list(status: Optional[str] = typer.Option(None, "--status")) -> Non
                       f"{p['proposed_price']:.2f}" if p["proposed_price"] else "",
                       p["shopify_product_id"], amazon_col)
     console.print(table)
+
+
+# ------------------------------------------------------------------ veo ads
+
+def _veo_campaign(cfg: AppConfig):
+    from .video.veo_ads import load_campaign
+    briefs = cfg.resolve(cfg.veo.briefs_path)
+    if not briefs.exists():
+        raise typer.Exit(code=_fail(f"briefs file not found: {briefs}"))
+    return load_campaign(briefs), briefs.parent
+
+
+def _veo_select(campaign, ad: Optional[int], all_ads: bool) -> list:
+    if all_ads:
+        return list(campaign.ads)
+    return [campaign.ad(ad if ad is not None else 1)]
+
+
+@veo_app.command("estimate")
+def veo_estimate() -> None:
+    """Projected campaign cost per model — no API key needed, nothing spent."""
+    from .integrations.veo_client import COST_PER_SECOND_USD
+    cfg = _cfg()
+    campaign, _ = _veo_campaign(cfg)
+    table = Table(title="Veo campaign estimate (rates are published USD/s of "
+                        "output — reconfirm before trusting)")
+    for col in ("ad", "title", "clips", "seconds",
+                *(m.removeprefix("veo-3.1-").removesuffix("-preview")
+                  for m in sorted(COST_PER_SECOND_USD))):
+        table.add_column(col)
+    total_seconds = 0
+    for ad_brief in campaign.ads:
+        total_seconds += ad_brief.seconds
+        table.add_row(str(ad_brief.id), ad_brief.title[:44],
+                      str(len(ad_brief.clips)), str(ad_brief.seconds),
+                      *(f"${ad_brief.seconds * rate:.2f}"
+                        for _, rate in sorted(COST_PER_SECOND_USD.items())))
+    table.add_row("", "[bold]total[/bold]", "", f"[bold]{total_seconds}[/bold]",
+                  *(f"[bold]${total_seconds * rate:.2f}[/bold]"
+                    for _, rate in sorted(COST_PER_SECOND_USD.items())))
+    console.print(table)
+    console.print(f"[dim]configured model: {cfg.veo.model} "
+                  f"(config.yaml veo.model)[/dim]")
+
+
+@veo_app.command("doctor")
+def veo_doctor() -> None:
+    """Check everything `veo generate` needs: key, briefs, photos, ffmpeg."""
+    from .integrations.veo_client import VeoError, make_veo_client
+    from .video.veo_ads import ffmpeg_available, photo_path
+    cfg = _cfg()
+    ok = True
+
+    campaign, briefs_dir = _veo_campaign(cfg)
+    console.print(f"[green]briefs ok[/green] — {len(campaign.ads)} ads, "
+                  f"{sum(len(a.clips) for a in campaign.ads)} clips")
+
+    missing = sorted({str(photo_path(campaign, a, briefs_dir))
+                      for a in campaign.ads
+                      if not photo_path(campaign, a, briefs_dir).exists()})
+    if missing:
+        ok = False
+        console.print("[red]missing product photos:[/red]")
+        for path in missing:
+            console.print(f"  {path}")
+        console.print(f"[dim]see {briefs_dir / 'assets/donut-bed/README.md'}[/dim]")
+    else:
+        console.print("[green]product photos ok[/green]")
+
+    if cfg.veo_mode() == "live":
+        try:
+            make_veo_client(cfg).check_auth()
+            console.print("[green]GEMINI_API_KEY ok[/green] (authenticated)")
+        except VeoError as exc:
+            ok = False
+            console.print(f"[red]{exc}[/red]")
+    else:
+        ok = False
+        console.print("[yellow]GEMINI_API_KEY not set — veo runs against the "
+                      "mock (stub mp4s, no spend)[/yellow]")
+
+    if ffmpeg_available():
+        console.print("[green]ffmpeg ok[/green]")
+    else:
+        ok = False
+        console.print("[red]ffmpeg/ffprobe not found — required to stitch "
+                      "multi-clip ads[/red]")
+    raise typer.Exit(code=0 if ok else 1)
+
+
+@veo_app.command("generate")
+def veo_generate(
+    ad: Optional[int] = typer.Option(
+        None, "--ad", help="Generate one ad by id (default: ad 1, the "
+                           "validation pass — judge it before --all)."),
+    all_ads: bool = typer.Option(False, "--all", help="Generate every ad."),
+    model: str = typer.Option("", "--model", help="Override config veo.model."),
+    yes: bool = typer.Option(False, "--yes", help="Skip the cost confirmation."),
+) -> None:
+    """Generate ad(s): clips via Veo, stitched to output/video/veo/adNN.mp4.
+
+    Default is ad #1 alone — the campaign plan's validation pass. Batch the
+    rest with --all only after judging it.
+    """
+    from .integrations.veo_client import VeoError, make_veo_client
+    from .video.veo_ads import estimate_usd, run_ad
+    cfg = _cfg()
+    campaign, briefs_dir = _veo_campaign(cfg)
+    chosen_model = model or cfg.veo.model
+    try:
+        ads = _veo_select(campaign, ad, all_ads)
+        cost = estimate_usd(ads, chosen_model)
+    except VeoError as exc:
+        raise typer.Exit(code=_fail(str(exc)))
+
+    mode = cfg.veo_mode()
+    console.print(f"[dim]veo: {mode} | model: {chosen_model} | "
+                  f"resolution: {cfg.veo.resolution}[/dim]")
+    label = ", ".join(f"#{a.id}" for a in ads)
+    if mode == "live":
+        console.print(f"generating ad(s) {label} — projected cost "
+                      f"[bold]~${cost:.2f}[/bold] billed to your Google account")
+        if not yes and not typer.confirm("proceed?"):
+            raise typer.Exit(code=1)
+    else:
+        console.print(f"[yellow]mock run[/yellow] for ad(s) {label} — set "
+                      "GEMINI_API_KEY for real generations (would be "
+                      f"~${cost:.2f})")
+
+    client = make_veo_client(cfg)
+    out_dir = cfg.output_dir / "video" / "veo"
+    failures = 0
+    for ad_brief in ads:
+        try:
+            final = run_ad(client, campaign, ad_brief, briefs_dir=briefs_dir,
+                           out_dir=out_dir, model=chosen_model,
+                           resolution=cfg.veo.resolution)
+            console.print(f"[green]ad #{ad_brief.id}[/green] "
+                          f"({ad_brief.seconds}s) -> {final}")
+        except Exception as exc:  # keep going: one bad ad must not eat the batch
+            failures += 1
+            console.print(f"[red]ad #{ad_brief.id} failed: {exc}[/red]")
+    if failures:
+        raise typer.Exit(code=1)
+    if len(ads) == 1 and ads[0].id == 1 and not all_ads and mode == "live":
+        console.print("[dim]validation pass done — judge the style, then "
+                      "batch the rest with `shopagent veo generate --all`[/dim]")
 
 
 if __name__ == "__main__":

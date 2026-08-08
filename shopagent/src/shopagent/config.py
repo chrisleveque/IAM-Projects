@@ -50,6 +50,15 @@ class VideoConfig(BaseModel):
     engine: str = "auto"                # auto | ffmpeg | json2video
 
 
+class VeoConfig(BaseModel):
+    """Google Veo (Gemini API) UGC ad generation — `shopagent veo`.
+    Model swap is the quality/cost dial: veo-3.1-generate-preview renders
+    noticeably better and costs ~2.7x more per second."""
+    model: str = "veo-3.1-fast-generate-preview"
+    resolution: str = "1080p"
+    briefs_path: str = "marketing/donut-bed-briefs.yaml"
+
+
 class PricingConfig(BaseModel):
     markup_multiplier: float = 2.5
     min_margin_usd: float = 3.0
@@ -80,6 +89,7 @@ class AppConfig(BaseModel):
     supplier: SupplierConfig = Field(default_factory=SupplierConfig)
     amazon: AmazonConfig = Field(default_factory=AmazonConfig)
     video: VideoConfig = Field(default_factory=VideoConfig)
+    veo: VeoConfig = Field(default_factory=VeoConfig)
     business: BusinessConfig = Field(default_factory=BusinessConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
@@ -160,6 +170,15 @@ class AppConfig(BaseModel):
         if engine == "auto":
             return "json2video" if has_key else "ffmpeg"
         return engine
+
+    def veo_mode(self) -> str:
+        """Effective mode for Veo ad generation: 'live' or 'mock'.
+
+        Like render_engine, not gated on mode: live — generating a video is
+        not a customer-facing mutation, and the CLI's cost confirmation is
+        the spend gate. Live whenever GEMINI_API_KEY is set.
+        """
+        return "live" if os.environ.get("GEMINI_API_KEY") else "mock"
 
     def tiktok_mode(self) -> str:
         """Effective mode for TikTok draft upload: 'live' or 'mock'.

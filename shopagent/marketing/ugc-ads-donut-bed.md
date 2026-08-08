@@ -88,3 +88,20 @@ pinned settings (get_cost preflights, 15s ad):
 Next session: top up (or approve 720p ≈ 78 credits for ad #1, or start the
 unlim trial), provide the 4 product photos, then resume at step 3
 (ad #1 validation pass) with `ugc-flow` loaded.
+
+# Update — 2026-08-08: pivoted to Google Veo (Gemini API)
+
+Chris dropped Higgsfield in favor of Google's Veo (via the Gemini API).
+Full pipeline is now built into shopagent — briefs, client, stitcher, CLI:
+
+- Briefs: `marketing/donut-bed-briefs.yaml` — these 10 ads as 2×8s clip
+  prompts with dialogue inline (edit prompts there, not here).
+- Photos: drop the 4 CJ listing photos into `marketing/assets/donut-bed/`
+  (see its README for exact filenames).
+- Key: set `GEMINI_API_KEY` in .env (aistudio.google.com/apikey).
+- Run: `shopagent veo doctor` → `shopagent veo estimate` →
+  `shopagent veo generate` (ad #1 validation pass, same gate as step 3
+  above) → judge it → `shopagent veo generate --all`.
+- Cost in dollars, not credits: ~$24 for all 10 on the default fast model,
+  ~$64 on the standard model (`config.yaml` veo.model). The CLI shows the
+  projected cost and confirms before spending.
