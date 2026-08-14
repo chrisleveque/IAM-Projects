@@ -408,3 +408,79 @@ def test_debug_report_flags_an_unknown_session_honestly():
     assert "UNKNOWN" in report
     assert "most likely signed out" in report
     assert "distinct offsite link hosts: 0" in report
+
+
+# --- manual apply-url entry (set-apply-url) --------------------------------
+
+def _cli(tmp_path, monkeypatch, *args):
+    from typer.testing import CliRunner
+
+    import jobagent.cli as cli
+
+    store = cli.Store(tmp_path / "t.db")
+    monkeypatch.setattr(cli, "_cfg", lambda: object())
+    monkeypatch.setattr(cli, "_store", lambda cfg: store)
+    result = CliRunner().invoke(cli.app, list(args))
+    return result, store
+
+
+def test_set_apply_url_stores_and_unblocks(tmp_path, monkeypatch):
+    from jobagent.store import Job, Store
+
+    store = Store(tmp_path / "t.db")
+    store.upsert_job(Job(url="https://www.linkedin.com/jobs/view/123/",
+                         source="linkedin", title="T", company="C",
+                         status="tailored"))
+    store.update("https://www.linkedin.com/jobs/view/123/", status="blocked")
+
+    import jobagent.cli as cli
+    from typer.testing import CliRunner
+
+    monkeypatch.setattr(cli, "_cfg", lambda: object())
+    monkeypatch.setattr(cli, "_store", lambda cfg: store)
+    result = CliRunner().invoke(cli.app, [
+        "set-apply-url", "https://www.linkedin.com/jobs/view/123/",
+        "https://boards.greenhouse.io/acme/jobs/42"])
+
+    assert result.exit_code == 0, result.output
+    job = store.get_job("https://www.linkedin.com/jobs/view/123/")
+    assert job.apply_url == "https://boards.greenhouse.io/acme/jobs/42"
+    assert job.status == "tailored"          # unblocked, eligible again
+    assert "automatable" in result.output
+
+
+def test_set_apply_url_matches_url_prefix(tmp_path, monkeypatch):
+    from jobagent.store import Job, Store
+
+    store = Store(tmp_path / "t.db")
+    store.upsert_job(Job(url="https://www.linkedin.com/jobs/view/123/?tk=abc",
+                         source="linkedin", status="tailored"))
+
+    import jobagent.cli as cli
+    from typer.testing import CliRunner
+
+    monkeypatch.setattr(cli, "_cfg", lambda: object())
+    monkeypatch.setattr(cli, "_store", lambda cfg: store)
+    result = CliRunner().invoke(cli.app, [
+        "set-apply-url", "https://www.linkedin.com/jobs/view/123/",
+        "https://jobs.lever.co/acme/uuid"])
+    assert result.exit_code == 0, result.output
+    assert store.get_job("https://www.linkedin.com/jobs/view/123/?tk=abc") \
+        .apply_url == "https://jobs.lever.co/acme/uuid"
+
+
+def test_set_apply_url_rejects_non_https(tmp_path, monkeypatch):
+    from jobagent.store import Job, Store
+
+    store = Store(tmp_path / "t.db")
+    store.upsert_job(Job(url="u", source="linkedin"))
+
+    import jobagent.cli as cli
+    from typer.testing import CliRunner
+
+    monkeypatch.setattr(cli, "_cfg", lambda: object())
+    monkeypatch.setattr(cli, "_store", lambda cfg: store)
+    result = CliRunner().invoke(cli.app, [
+        "set-apply-url", "u", "javascript:alert(1)"])
+    assert result.exit_code != 0
+    assert store.get_job("u").apply_url == ""

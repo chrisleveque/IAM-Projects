@@ -829,6 +829,75 @@ def manual():
                   f"{counts.get('tailored', 0)}")
 
 
+@app.command(name="set-apply-url")
+def set_apply_url(
+    job_url: str = typer.Argument(help="The tracked posting URL (LinkedIn/Indeed)"),
+    apply_url: str = typer.Argument(help="The employer's own apply URL "
+                                         "(Greenhouse, Lever, Workday, ...)"),
+):
+    """Record a job's employer-side apply URL by hand.
+
+    For when you (or Claude in your browser) can see the real apply link on a
+    posting that the agent's browser can't. Once set, auto-apply goes
+    straight to the employer's ATS and never touches LinkedIn for that job.
+    """
+    from .ats import SUPPORTED, detect_ats
+
+    cfg = _cfg()
+    store = _store(cfg)
+    job = store.get_job(job_url)
+    if job is None:
+        # Try a prefix match so a URL pasted without tracking params still hits.
+        matches = [j for j in store.list_jobs()
+                   if j.url.startswith(job_url) or job_url.startswith(j.url)]
+        if len(matches) == 1:
+            job = matches[0]
+        elif len(matches) > 1:
+            raise typer.Exit(code=_fail(
+                "that URL matches several tracked jobs — paste the exact URL "
+                "from jobagent status"))
+        else:
+            raise typer.Exit(code=_fail(f"job not found in tracker: {job_url}"))
+
+    if not apply_url.lower().startswith("https://"):
+        raise typer.Exit(code=_fail("the apply URL must start with https://"))
+    store.update(job.url, apply_url=apply_url)
+    if job.status == "blocked":
+        store.update(job.url, status="tailored")  # eligible for auto-apply again
+
+    ats = detect_ats(apply_url)
+    console.print(f"[green]Saved.[/green] {job.title} at {job.company}")
+    if ats in SUPPORTED:
+        console.print(f"  {ats} — [green]automatable[/green]. "
+                      "Run [cyan]jobagent auto-apply[/cyan].")
+    elif ats:
+        console.print(f"  {ats} — not automated yet; it will be parked with "
+                      "the ATS named (use [cyan]jobagent manual[/cyan]).")
+    else:
+        console.print("  Unrecognized system — auto-apply will try the "
+                      "generic form flow.")
+
+
+@app.command(name="apply-urls")
+def apply_urls():
+    """List jobs still missing an employer apply URL, for collecting them
+    in your real browser (e.g. with Claude in Chrome)."""
+    cfg = _cfg()
+    store = _store(cfg)
+    jobs = [j for j in store.list_jobs(status=("tailored", "filled", "blocked"))
+            if not j.apply_url]
+    if not jobs:
+        console.print("Every pending job already has its apply URL. "
+                      "Run [cyan]jobagent auto-apply[/cyan].")
+        return
+    console.print(f"[bold]{len(jobs)} job(s) need their employer apply URL.[/bold]\n"
+                  "Open each posting in your normal browser, copy the link "
+                  "behind the Apply button, then:\n"
+                  "  [cyan]jobagent set-apply-url <posting-url> <apply-url>[/cyan]\n")
+    for job in jobs:
+        console.print(f"  {job.title} at {job.company}\n    {job.url}")
+
+
 @app.command()
 def requeue():
     """Move all 'tailored' jobs back to 'queued' so the next run regenerates
