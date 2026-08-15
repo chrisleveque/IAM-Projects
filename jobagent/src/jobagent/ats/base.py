@@ -48,6 +48,8 @@ class ApplyContext:
     submit: bool = False            # False = fill and screenshot only
     pause: Any = None               # callable for human-ish delays
     console: Any = None
+    vault: Any = None               # vault.Vault, for account-gated ATSs
+    account_email: str = ""         # email used when creating ATS accounts
 
     def wait(self) -> None:
         if self.pause is not None:

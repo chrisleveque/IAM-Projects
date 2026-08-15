@@ -899,6 +899,42 @@ def apply_urls():
 
 
 @app.command()
+def accounts(
+    show: bool = typer.Option(False, "--show",
+                              help="Also print passwords (for logging in "
+                                   "manually). Keep this off on shared screens."),
+    delete: Optional[str] = typer.Option(
+        None, help="Delete the stored credential for this host"),
+):
+    """List ATS accounts the agent has created (stored encrypted locally)."""
+    from .vault import Vault
+
+    cfg = _cfg()
+    vault = Vault(cfg.resolve("profile/vault.enc"))
+    if delete:
+        if vault.delete(delete):
+            console.print(f"[green]deleted credential for {delete}[/green]")
+        else:
+            console.print(f"no credential stored for {delete}")
+        return
+    creds = vault.list()
+    if not creds:
+        console.print("No ATS accounts yet — they're created during "
+                      "[cyan]auto-apply --submit[/cyan] on account-gated "
+                      "systems like Workday.")
+        return
+    table = Table("host", "email", *(["password"] if show else []), "created", "note")
+    for cred in creds:
+        row = [cred.host, cred.email]
+        if show:
+            row.append(cred.password)
+        table.add_row(*row, cred.created_at, cred.note)
+    console.print(table)
+    if not show:
+        console.print("[dim]passwords hidden — add --show to display them[/dim]")
+
+
+@app.command()
 def requeue():
     """Move all 'tailored' jobs back to 'queued' so the next run regenerates
     their documents and re-attempts applying."""

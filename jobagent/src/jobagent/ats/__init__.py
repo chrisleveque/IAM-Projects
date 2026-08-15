@@ -32,7 +32,7 @@ _HOST_PATTERNS: tuple[tuple[str, str], ...] = (
 
 # ATS we can drive end-to-end today. Everything else is detected (so the
 # report can say what it was) but parked instead of attempted.
-SUPPORTED = ("greenhouse", "lever")
+SUPPORTED = ("greenhouse", "lever", "workday")
 
 
 def detect_ats(url: str) -> str:
@@ -60,4 +60,8 @@ def adapter_for(url: str):
         from .lever import LeverAdapter
 
         return LeverAdapter()
+    if name == "workday":
+        from .workday import WorkdayAdapter
+
+        return WorkdayAdapter()
     return None

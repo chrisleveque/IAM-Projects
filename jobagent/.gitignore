@@ -1,5 +1,7 @@
 # Secrets and per-user state — never commit these
 .env
+profile/vault.enc
+profile/.vault.key
 browser_profile*/
 output/
 *.db

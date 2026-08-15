@@ -442,9 +442,14 @@ def apply_to_job(session, job, cfg, store, ai, master_resume: str,
 
     answerer = Answerer(answers, store=store, ai=ai, profile=master_resume, job=job)
     shots = (resume_file.parent / "apply") if resume_file else (cfg.output_dir / "apply")
+    from ..vault import Vault
+
     ctx = ApplyContext(resume_file=resume_file, cover_letter_file=cover_file,
                        answerer=answerer, screenshot_dir=shots, submit=submit,
-                       pause=session.pause, console=console)
+                       pause=session.pause, console=console,
+                       vault=Vault(cfg.resolve("profile/vault.enc")),
+                       account_email=str((answers.get("contact") or {})
+                                         .get("email", "")))
 
     page = session.page
     try:

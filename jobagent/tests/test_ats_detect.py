@@ -18,7 +18,6 @@ def test_detects_lever_variants():
 
 def test_detects_unautomated_systems():
     cases = {
-        "https://acme.wd1.myworkdayjobs.com/en-US/careers/job/R-1": "workday",
         "https://careers-acme.icims.com/jobs/1234/login": "icims",
         "https://acme.taleo.net/careersection/jobdetail.ftl": "taleo",
         "https://jobs.smartrecruiters.com/Acme/74400": "smartrecruiters",
@@ -31,6 +30,17 @@ def test_detects_unautomated_systems():
         # detected, but deliberately not driven unattended
         assert not is_supported(url)
         assert adapter_for(url) is None
+
+
+def test_workday_is_detected_and_automated():
+    for url in (
+        "https://acme.wd1.myworkdayjobs.com/en-US/careers/job/R-1",
+        "https://nordic.wd5.myworkdayjobs.com/Nordic/job/US/Security-Engineer",
+        "https://acme.wd1.myworkdaysite.com/recruiting/acme/careers",
+    ):
+        assert detect_ats(url) == "workday", url
+        assert is_supported(url)
+        assert adapter_for(url).name == "workday"
 
 
 def test_unknown_hosts_return_empty():
