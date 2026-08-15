@@ -109,10 +109,38 @@ full-page screenshot to `output/<job>/apply/filled.png`, and prints which
 questions it answered and which it refused to. Once the answers look right,
 re-run with `--submit`.
 
-**Supported:** Greenhouse and Lever (no account needed). Workday, iCIMS,
-Taleo, SmartRecruiters, Ashby, Workable and BambooHR are *detected* and parked
-as `blocked` with the ATS named — they need an account and often a bot check,
-so they go through `jobagent manual`.
+**Supported:** Greenhouse and Lever (no account needed) and **Workday**
+(multi-page, account-gated — see below). iCIMS, Taleo, SmartRecruiters, Ashby,
+Workable and BambooHR are *detected* and parked as `blocked` with the ATS
+named, so they go through `jobagent manual`.
+
+### Workday accounts and email verification
+
+Workday requires an account per employer tenant. The agent handles this
+end-to-end **in `--submit` mode only** (creating an account under your email is
+an outward action a dry run won't take):
+
+- It generates a strong password, stores it encrypted in
+  `profile/vault.enc` (the key is `profile/.vault.key`; both are gitignored),
+  then creates the account. The password is vaulted *before* it's submitted, so
+  a crash mid-signup can't strand an account you can't get back into.
+- See your accounts any time with `jobagent accounts` (add `--show` for
+  passwords). Reused automatically on later Workday jobs at the same tenant.
+- If a tenant emails a verification link/code, the agent reads it over IMAP —
+  set `JOBAGENT_EMAIL` and `JOBAGENT_EMAIL_APP_PASSWORD` (a Gmail **App
+  Password**, not your real one) in `.env`. Without those, a tenant that
+  demands verification is parked with that reason. The reader is read-only: it
+  searches for the ATS's recent mail and never sends or deletes anything.
+- A sign-in with a vaulted account that gets **rejected is parked, not
+  retried** — repeated failures could lock your real identity out of that
+  tenant. Fix it with the tenant's password reset, then
+  `jobagent accounts --delete <host>` and let it re-create, or store the new
+  password yourself.
+
+Dry run still works on Workday: with an existing account it signs in and fills
+every page up to Review, screenshots each one, and stops. Without an account it
+parks (nothing to sign in with yet) — run `--submit` when you're ready to let
+it create one.
 
 ### What it refuses to do
 
