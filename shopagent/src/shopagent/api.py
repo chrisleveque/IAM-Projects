@@ -19,6 +19,7 @@ operator behind a tunnel; it is not a multi-user permission system.
 from __future__ import annotations
 
 import json
+import secrets
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -88,8 +89,9 @@ def create_app(cfg: AppConfig | None = None, token: str = "") -> FastAPI:
 
     def require_token(authorization: Optional[str] = Header(None)) -> None:
         expected = f"Bearer {token}"
-        # compare full strings; a prefix check would accept a truncated token
-        if authorization != expected:
+        # constant-time comparison of the full string: `!=` short-circuits on
+        # the first differing byte, which leaks timing to a remote guesser
+        if not secrets.compare_digest(authorization or "", expected):
             raise HTTPException(status_code=401, detail="invalid or missing bearer token")
 
     def open_store() -> Store:

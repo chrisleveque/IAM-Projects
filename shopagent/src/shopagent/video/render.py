@@ -480,25 +480,72 @@ def add_captions(src: Path | str, captions: list[dict], out_path: Path | str,
 
 # ------------------------------------------------------------------ sourcing
 
+MAX_IMAGE_BYTES = 25 * 1024 * 1024
+_MAX_REDIRECTS = 5
+
+
+def _url_is_public_https(url: str) -> bool:
+    """SSRF guard for agent-supplied image URLs: https only, and the host must
+    resolve to public addresses — no localhost, RFC1918, link-local, or cloud
+    metadata endpoints reachable from the operator's machine."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or 443)
+        return all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+    except (OSError, ValueError):
+        return False
+
+
+def _fetch_one(http, url: str, guard: bool) -> bytes | None:
+    """One download with redirects followed by hand, so every hop — not just
+    the first URL — passes the guard. Returns None on any failure."""
+    from urllib.parse import urljoin
+
+    for _ in range(_MAX_REDIRECTS + 1):
+        if guard and not _url_is_public_https(url):
+            return None
+        try:
+            response = http.get(url)
+        except Exception:
+            return None
+        if response.is_redirect:
+            target = response.headers.get("location", "")
+            if not target:
+                return None
+            url = urljoin(url, target)
+            continue
+        if response.is_error or len(response.content) > MAX_IMAGE_BYTES:
+            return None
+        return response.content
+    return None
+
+
 def fetch_images(urls: list[str], dest_dir: Path | str, client=None) -> list[Path]:
     """Download product photos for rendering. Failures are skipped, not fatal —
-    a supplier link that 404s shouldn't cost the whole ad."""
+    a supplier link that 404s shouldn't cost the whole ad. The default client
+    fetches URLs that originate from agents/suppliers, so it carries the SSRF
+    guard; an injected client (tests) brings its own transport."""
     import httpx
 
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    http = client or httpx.Client(timeout=30.0, follow_redirects=True)
+    guard = client is None
+    http = client or httpx.Client(timeout=30.0, follow_redirects=False)
     saved: list[Path] = []
     try:
         for index, url in enumerate(urls):
             suffix = Path(str(url).split("?")[0]).suffix or ".jpg"
             dest = dest_dir / f"img_{index:02d}{suffix}"
-            try:
-                response = http.get(url)
-                response.raise_for_status()
-            except Exception:
+            content = _fetch_one(http, str(url), guard)
+            if content is None:
                 continue
-            dest.write_bytes(response.content)
+            dest.write_bytes(content)
             saved.append(dest)
     finally:
         if client is None:

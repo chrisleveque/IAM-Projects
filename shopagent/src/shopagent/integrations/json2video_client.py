@@ -169,6 +169,11 @@ class JSON2VideoClient:
         self._http = httpx.Client(timeout=timeout, transport=transport,
                                   follow_redirects=True,
                                   headers={"x-api-key": api_key})
+        # finished videos are served from wherever the status response points
+        # (typically a third-party CDN) — download with a keyless client so
+        # the API key is only ever sent to the API itself
+        self._download_http = httpx.Client(timeout=timeout, transport=transport,
+                                           follow_redirects=True)
         self._poll_interval = poll_interval
         self._poll_timeout = poll_timeout
 
@@ -196,7 +201,7 @@ class JSON2VideoClient:
             raise JSON2VideoError(f"render finished without a video url: {status}")
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        download = self._http.get(url)
+        download = self._download_http.get(url)
         if download.status_code >= 400:
             raise JSON2VideoError(f"video download failed ({download.status_code})")
         out_path.write_bytes(download.content)

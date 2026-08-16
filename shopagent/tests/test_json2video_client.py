@@ -103,12 +103,15 @@ def _client(handler, **kw) -> JSON2VideoClient:
 
 def _flow_handler(state: dict, polls_until_done: int = 2):
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "cdn.render.test":
+            # the key authenticates to the API only; the finished video lives
+            # on a third-party CDN that must never see it
+            assert "x-api-key" not in request.headers
+            return httpx.Response(200, content=b"mp4-bytes")
         assert request.headers["x-api-key"] == "key-123"
         if request.method == "POST":
             state["movie"] = json.loads(request.content)
             return httpx.Response(200, json={"success": True, "project": "prj42"})
-        if request.url.host == "cdn.render.test":
-            return httpx.Response(200, content=b"mp4-bytes")
         state["polls"] = state.get("polls", 0) + 1
         assert request.url.params["project"] == "prj42"
         if state["polls"] < polls_until_done:
