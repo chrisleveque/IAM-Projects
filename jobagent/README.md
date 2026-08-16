@@ -177,6 +177,33 @@ before: `jobagent audit` prints each attempt with every question/answer pair it
 sent and everything it parked. If something went out wrong you can ask the
 employer to withdraw it — which is why the audit log exists.
 
+## When something breaks: `selftest` and `report`
+
+Most failures here are environment-shaped — a Windows file encoding, a stale
+install, a Playwright build, an expired credential — and none of them show up
+in CI. Two commands turn "something's wrong, here are six screenshots" into one
+answer:
+
+```bash
+jobagent selftest              # is this machine healthy? (no LinkedIn, nothing submitted)
+jobagent selftest --with-ai    # also make one tiny real API call
+jobagent report                # bundle everything needed to diagnose, into one file
+```
+
+`selftest` exercises the parts that actually break: your profile files (including
+UTF-16/BOM encodings), the job tracker, the account vault, document generation
+(asserting the borderless 70/30 layout that regressed repeatedly), a real browser
+driving a real form end-to-end, and your API key + email credentials. Each check
+prints a concrete fix, and one failing check never stops the others.
+
+`report` adds recent application attempts, recent crashes, and the latest ATS
+page diagnostics. **Everything is redacted** — emails, phone numbers, API keys,
+app passwords and home paths are stripped — so the output is safe to paste.
+
+Crashes are captured automatically: an unhandled error writes a redacted
+traceback to `diagnostics/crash-<timestamp>.txt`, so it survives the terminal
+scrolling away.
+
 ## Honesty guarantee
 
 The tailoring prompt enforces: no invented employers, titles, dates, degrees,
