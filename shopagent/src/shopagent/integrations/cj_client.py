@@ -33,6 +33,7 @@ from pathlib import Path
 
 from ..config import AppConfig
 from . import fixtures
+from . import write_private
 
 BASE_URL = "https://developers.cjdropshipping.com/api2.0/v1"
 
@@ -104,8 +105,8 @@ class CJClient:
             raise CJError(f"CJ auth failed: {body.get('message', 'unknown error')}")
         token = body["data"]["accessToken"]
         expires = datetime.now(timezone.utc) + timedelta(days=14)
-        self._token_cache.write_text(json.dumps(
-            {"token": token, "expires_at": expires.isoformat()}), encoding="utf-8")
+        write_private(self._token_cache, json.dumps(
+            {"token": token, "expires_at": expires.isoformat()}))
         return token
 
     def _ensure_token(self) -> str:

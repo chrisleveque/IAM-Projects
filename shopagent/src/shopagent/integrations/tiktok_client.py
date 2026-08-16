@@ -32,6 +32,7 @@ from pathlib import Path
 import httpx
 
 from ..config import AppConfig
+from . import write_private
 
 BASE_URL = "https://open.tiktokapis.com/v2"
 TOKEN_URL = f"{BASE_URL}/oauth/token/"
@@ -86,14 +87,20 @@ class TikTokAuth:
         payload = response.json()
         token = payload.get("access_token")
         if not token:
-            raise TikTokError(f"no access_token in token response: {payload}")
+            # never echo the payload itself: a partial token response can
+            # carry a rotated refresh_token, and this message lands in the
+            # approvals error column and terminal output
+            raise TikTokError(
+                "no access_token in token response "
+                f"(fields: {sorted(payload)}, "
+                f"error: {payload.get('error_description') or payload.get('error') or 'none'})")
         expires_in = int(payload.get("expires_in", 86400))
         try:
-            self._token_cache.write_text(json.dumps({
+            write_private(self._token_cache, json.dumps({
                 "token": token,
                 "expires_at": (datetime.now(timezone.utc)
                                + timedelta(seconds=expires_in)).isoformat(),
-            }), encoding="utf-8")
+            }))
         except OSError:
             pass  # a non-writable cache is a slowdown, not a failure
         return token

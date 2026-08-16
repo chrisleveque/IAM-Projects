@@ -17,10 +17,19 @@ surfaced by `fitagent doctor` and the README):
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 UPLOAD_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+
+def _write_private(path: Path, text: str) -> None:
+    """The token file holds a long-lived refresh token; write_text honours the
+    umask and typically leaves it world-readable, so restrict it to the owner."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(text)
 
 
 class YouTubeClient:
@@ -43,7 +52,7 @@ class YouTubeClient:
                                                       UPLOAD_SCOPES)
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            self.token_path.write_text(creds.to_json(), encoding="utf-8")
+            _write_private(self.token_path, creds.to_json())
         return creds
 
     def run_oauth(self) -> None:
@@ -58,7 +67,7 @@ class YouTubeClient:
         flow = InstalledAppFlow.from_client_secrets_file(
             str(self.client_secrets), UPLOAD_SCOPES)
         creds = flow.run_local_server(port=0, open_browser=False)
-        self.token_path.write_text(creds.to_json(), encoding="utf-8")
+        _write_private(self.token_path, creds.to_json())
 
     # ---- upload ------------------------------------------------------------
 

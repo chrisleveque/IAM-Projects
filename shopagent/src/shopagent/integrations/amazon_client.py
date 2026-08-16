@@ -37,6 +37,7 @@ from pathlib import Path
 
 from ..config import AppConfig
 from . import fixtures
+from . import write_private
 
 LWA_TOKEN_URL = "https://api.amazon.com/auth/o2/token"
 USER_AGENT = "shopagent/1.0 (Language=Python)"
@@ -87,8 +88,8 @@ class LWAAuth:
         token = body["access_token"]
         expires = datetime.now(timezone.utc) + timedelta(
             seconds=int(body.get("expires_in", 3600)))
-        self._token_cache.write_text(json.dumps(
-            {"token": token, "expires_at": expires.isoformat()}), encoding="utf-8")
+        write_private(self._token_cache, json.dumps(
+            {"token": token, "expires_at": expires.isoformat()}))
         return token
 
     def token(self) -> str:
