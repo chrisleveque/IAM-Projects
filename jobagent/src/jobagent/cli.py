@@ -33,7 +33,7 @@ def _master_resume(cfg: AppConfig) -> str:
     path = cfg.master_resume_path
     if not path.exists():
         raise typer.Exit(code=_fail(f"master resume not found at {path}"))
-    text = path.read_text(encoding="utf-8")
+    text = _read_user_text(path)
     if "REPLACE ME" in text:
         raise typer.Exit(code=_fail(
             f"{path} still contains the template marker — paste your real resume "
@@ -45,12 +45,28 @@ def _answers(cfg: AppConfig) -> dict:
     path = cfg.answers_path
     if not path.exists():
         return {}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return yaml.safe_load(_read_user_text(path)) or {}
 
 
 def _ai(cfg: AppConfig):
     from .ai.client import AIClient
     return AIClient(cfg.ai.model, cfg.ai.max_tokens)
+
+
+def _read_user_text(path: Path) -> str:
+    """Read a user-edited file tolerating Windows encodings.
+
+    PowerShell's `>` redirection writes UTF-16, and Notepad sometimes saves
+    UTF-8 with a BOM — a hard utf-8 read crashes on both, which took down
+    `doctor` on a resume that was perfectly fine.
+    """
+    raw = path.read_bytes()
+    for encoding in ("utf-8-sig", "utf-16", "cp1252"):
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 
 def _fail(msg: str) -> int:
@@ -1040,11 +1056,11 @@ def doctor():
     check("config.yaml", (cfg.root / "config.yaml").exists())
     check("searches configured", bool(cfg.searches))
     resume_path = cfg.master_resume_path
-    resume_ready = resume_path.exists() and "REPLACE ME" not in resume_path.read_text(encoding="utf-8")
+    resume_ready = resume_path.exists() and "REPLACE ME" not in _read_user_text(resume_path)
     check("master resume filled in", resume_ready,
           f"— edit {resume_path} (remove the REPLACE ME comment)")
     answers_path = cfg.answers_path
-    answers_ready = answers_path.exists() and "REPLACE ME" not in answers_path.read_text(encoding="utf-8")
+    answers_ready = answers_path.exists() and "REPLACE ME" not in _read_user_text(answers_path)
     check("answers.yaml filled in", answers_ready,
           f"— edit {answers_path} (remove the REPLACE ME line)")
     import os

@@ -133,3 +133,24 @@ def test_doctor_privacy_check_passes_when_untracked(tmp_path):
     _check_git_privacy(SimpleNamespace(root=tmp_path),
                        lambda label, passed, hint="": result.update(passed=passed))
     assert result["passed"] is True
+
+
+# --- Windows encoding tolerance --------------------------------------------
+
+def test_user_files_readable_in_windows_encodings(tmp_path):
+    """PowerShell `>` writes UTF-16; Notepad can add a UTF-8 BOM. Neither
+    should crash doctor/tailor on a perfectly good resume."""
+    from jobagent.cli import _read_user_text
+
+    utf16 = tmp_path / "utf16.md"
+    utf16.write_bytes("# Chris Résumé — real content".encode("utf-16"))
+    assert "Résumé" in _read_user_text(utf16)
+
+    bom = tmp_path / "bom.md"
+    bom.write_bytes(b"\xef\xbb\xbfcontact: chris")
+    text = _read_user_text(bom)
+    assert text.startswith("contact")      # BOM stripped, not smuggled in
+
+    cp1252 = tmp_path / "cp1252.md"
+    cp1252.write_bytes("salary — $125,000".encode("cp1252"))
+    assert "$125,000" in _read_user_text(cp1252)
