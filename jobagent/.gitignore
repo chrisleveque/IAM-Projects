@@ -6,10 +6,11 @@ browser_profile*/
 output/
 *.db
 
-# Personal data: keep your real resume/answers local if you prefer
-# (templates are committed; uncomment to ignore your filled-in versions)
-# profile/master_resume.md
-# profile/answers.yaml
+# Personal data — NEVER commit your filled-in versions. Copy the *.example
+# files to these names and edit locally; the real ones stay off git.
+profile/master_resume.md
+profile/answers.yaml
+profile/*.db
 
 __pycache__/
 *.egg-info/

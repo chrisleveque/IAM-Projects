@@ -6,7 +6,7 @@
 
 # Chris Leveque
 
-City, ST · chrisleveque25@gmail.com · (555) 555-5555 · linkedin.com/in/your-handle
+City, ST · you@example.com · (555) 555-5555 · linkedin.com/in/your-handle
 
 ## Summary
 

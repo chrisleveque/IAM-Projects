@@ -46,13 +46,19 @@ playwright install chromium
 1. **API key**: create one at [console.anthropic.com](https://console.anthropic.com)
    → *API Keys* → copy `.env.example` to `.env` and paste it in. (New accounts
    need a small credit balance; tailoring one job costs on the order of a cent.)
-2. **Master resume**: edit `profile/master_resume.md`. Paste your *longest*
-   resume — every role, bullet, skill, cert. The AI only selects and rewords
-   from this file; it is instructed to never invent facts, so the more that's
-   in here, the better the tailoring.
-3. **Answers**: edit `profile/answers.yaml` with your contact info, work
-   authorization, salary, etc. These pre-fill the repetitive application
-   questions.
+2. **Master resume**: copy `profile/master_resume.example.md` to
+   `profile/master_resume.md` and paste in your *longest* resume — every role,
+   bullet, skill, cert. The AI only selects and rewords from this file; it is
+   instructed to never invent facts, so the more that's in here, the better.
+3. **Answers**: copy `profile/answers.example.yaml` to `profile/answers.yaml`
+   and fill in your contact info, work authorization, salary, etc. These
+   pre-fill the repetitive application questions.
+
+   > **Your real `profile/master_resume.md` and `profile/answers.yaml` are
+   > gitignored** — they never get committed, even with `git add -A`. Only the
+   > `*.example` templates are tracked. Everything with a secret in it (`.env`,
+   > `profile/vault.enc`, `profile/.vault.key`, `browser_profile/`,
+   > `*.db`) is ignored too.
 4. **Searches**: edit `config.yaml` with your queries, locations, and limits.
 5. Check everything: `jobagent doctor`
 6. Log in once: `jobagent login` (a browser opens; log in to LinkedIn and
