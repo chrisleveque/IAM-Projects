@@ -1061,8 +1061,36 @@ def doctor():
     soffice_path = find_soffice()
     console.print(f"  LibreOffice for PDF export (optional): "
                   f"{f'[green]found at {soffice_path}[/green]' if soffice_path else '[yellow]not found — .docx only[/yellow]'}")
+
+    # Secret-leak tripwire: if a file that should stay local ever shows up as
+    # tracked by git, say so loudly — this is what protects personal data and
+    # credentials from being pushed to a public repo.
+    _check_git_privacy(cfg, check)
+
     console.print("\n[green]All set — run: jobagent login[/green]" if ok
                   else "\n[yellow]Fix the items above, then rerun jobagent doctor.[/yellow]")
+
+
+def _check_git_privacy(cfg, check) -> None:
+    """Fail if any sensitive file is tracked by git."""
+    import subprocess
+
+    must_be_private = ("profile/answers.yaml", "profile/master_resume.md",
+                       "profile/vault.enc", "profile/.vault.key", ".env")
+    try:
+        tracked = set(subprocess.run(
+            ["git", "ls-files"], cwd=cfg.root, capture_output=True,
+            text=True, timeout=10).stdout.split())
+    except Exception:
+        return  # not a git repo, or git unavailable — nothing to police
+    leaked = [f for f in must_be_private if f in tracked]
+    if leaked:
+        check("git privacy (secrets untracked)", False,
+              "— these are tracked by git and could be pushed: "
+              + ", ".join(leaked)
+              + " — run: git rm --cached " + " ".join(leaked))
+    else:
+        check("git privacy (secrets untracked)", True)
 
 
 if __name__ == "__main__":

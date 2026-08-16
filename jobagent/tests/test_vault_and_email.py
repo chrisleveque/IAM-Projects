@@ -91,3 +91,45 @@ def test_plain_marketing_links_are_not_mistaken_for_verification():
     html = ('<a href="https://acme.com/careers">Careers</a>'
             '<a href="https://twitter.com/acme">Follow us</a>')
     assert not extract_verification("", html).found
+
+
+# --- git privacy tripwire --------------------------------------------------
+
+def test_doctor_privacy_check_flags_tracked_secrets(tmp_path, monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    (tmp_path / "profile").mkdir()
+    secret = tmp_path / "profile" / "answers.yaml"
+    secret.write_text("email: real@example.com")
+    subprocess.run(["git", "add", "profile/answers.yaml"], cwd=tmp_path)
+
+    from jobagent.cli import _check_git_privacy
+
+    flagged = {}
+
+    def check(label, passed, hint=""):
+        flagged[label] = (passed, hint)
+
+    _check_git_privacy(SimpleNamespace(root=tmp_path), check)
+    label = next(iter(flagged))
+    passed, hint = flagged[label]
+    assert passed is False
+    assert "answers.yaml" in hint and "git rm --cached" in hint
+
+
+def test_doctor_privacy_check_passes_when_untracked(tmp_path):
+    import subprocess
+    from types import SimpleNamespace
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    (tmp_path / "profile").mkdir()
+    (tmp_path / "profile" / "answers.yaml").write_text("email: x")  # untracked
+
+    from jobagent.cli import _check_git_privacy
+
+    result = {}
+    _check_git_privacy(SimpleNamespace(root=tmp_path),
+                       lambda label, passed, hint="": result.update(passed=passed))
+    assert result["passed"] is True
