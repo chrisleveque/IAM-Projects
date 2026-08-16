@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
-from .base import (BLOCKED, FAILED, SUBMITTED, ApplyContext, ApplyReport,
+from .base import (BLOCKED, FAILED, FILLED, SUBMITTED, ApplyContext, ApplyReport,
                    BaseATSAdapter, has_bot_wall)
 from .fields import fill_field, option_index, read_fields
 
@@ -236,11 +236,14 @@ class WorkdayAdapter(BaseATSAdapter):
                 return report
             return None
 
-        # No account yet: creating one is an outward-facing action.
+        # No account yet: creating one is an outward-facing action a dry run
+        # won't take. This is a "waiting for --submit", not a block — leave it
+        # FILLED so a plain `auto-apply --submit` picks it right back up
+        # (no --retry-blocked needed).
         if not ctx.submit:
-            report.outcome = BLOCKED
-            report.note = (f"needs a new account on {host} — accounts are only "
-                           "created in --submit mode")
+            report.outcome = FILLED
+            report.note = (f"ready — needs a new account on {host}, which is "
+                           "created only in --submit mode. Re-run with --submit.")
             return report
 
         if not creating:

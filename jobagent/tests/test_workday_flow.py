@@ -213,8 +213,10 @@ def test_account_creation_only_happens_in_submit_mode(tmp_path):
                                             make_ctx(tmp_path, submit=False, vault=vault))
         finally:
             browser.close()
-    assert report.outcome == BLOCKED
-    assert "only created in --submit" in report.note
+    # a dry run on an account-gated tenant is "ready, waiting for --submit",
+    # NOT blocked — so a plain --submit run picks it back up
+    assert report.outcome == FILLED
+    assert "--submit" in report.note
     # nothing was vaulted during a dry run
     assert vault.get("acme.wd1.myworkdayjobs.com") is None
 
