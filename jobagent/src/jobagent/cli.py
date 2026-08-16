@@ -980,6 +980,68 @@ def accounts(
 
 
 @app.command()
+def selftest(
+    with_ai: bool = typer.Option(
+        False, "--with-ai",
+        help="Also make one tiny real API call to prove the key works "
+             "(costs a fraction of a cent)."),
+    quick: bool = typer.Option(False, "--quick",
+                               help="Skip the browser end-to-end check"),
+    save: Optional[str] = typer.Option(
+        None, "--save", help="Write the report to this file as well"),
+):
+    """Check that everything on THIS machine works — without touching LinkedIn.
+
+    Exercises the parts that actually break: file encodings, the browser,
+    document generation, the form-filling pipeline, and your credentials.
+    Personal data is redacted, so the output is safe to share.
+    """
+    from .selftest import run_selftest
+
+    cfg = _cfg()
+    report = run_selftest(cfg, with_ai=with_ai, quick=quick)
+    for check in report.checks:
+        colour = {"pass": "green", "fail": "red", "skip": "dim"}[check.status]
+        mark = {"pass": "PASS", "fail": "FAIL", "skip": "skip"}[check.status]
+        console.print(f"  [{colour}]{mark:4}[/{colour}]  {check.name}"
+                      + (f" [dim]— {check.detail}[/dim]" if check.detail else ""))
+        if check.status == "fail" and check.fix:
+            console.print(f"        [yellow]fix:[/yellow] {check.fix}")
+    if save:
+        Path(save).write_text(report.render(), encoding="utf-8")
+        console.print(f"\nreport written to {save}")
+    if report.passed:
+        console.print("\n[green]Everything checks out.[/green]")
+    else:
+        console.print(f"\n[red]{len(report.failures)} check(s) failed.[/red] "
+                      "Fix the items above, or run [cyan]jobagent report[/cyan] "
+                      "and share the output.")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def report(
+    save: str = typer.Option("jobagent-report.txt", "--save",
+                             help="Where to write the report"),
+    with_ai: bool = typer.Option(False, "--with-ai",
+                                 help="Include a live API check"),
+):
+    """Bundle everything needed to diagnose a problem into one shareable file.
+
+    Self-test results, recent application attempts, recent crashes, and the
+    latest ATS page diagnostics — all redacted of personal data.
+    """
+    from .selftest import collect_report
+
+    cfg = _cfg()
+    text = collect_report(cfg, with_ai=with_ai)
+    Path(save).write_text(text, encoding="utf-8")
+    console.print(text)
+    console.print(f"\n[green]Written to {save}[/green] — paste that file's "
+                  "contents to get help. Personal data is already redacted.")
+
+
+@app.command()
 def requeue():
     """Move all 'tailored' jobs back to 'queued' so the next run regenerates
     their documents and re-attempts applying."""
@@ -1138,5 +1200,32 @@ def _check_git_privacy(cfg, check) -> None:
         check("git privacy (secrets untracked)", True)
 
 
+def main() -> None:
+    """Console-script entry point that captures crashes to a file.
+
+    Typer renders a traceback and exits, so an unhandled error otherwise
+    lives only in terminal scrollback. Saving a redacted copy means a crash
+    is one file to share instead of a screenshot.
+    """
+    import sys
+
+    try:
+        app()
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - re-raised after recording
+        try:
+            from .selftest import write_crash_report
+
+            path = write_crash_report(
+                _cfg().root, " ".join(sys.argv[1:]) or "jobagent", exc)
+            console.print(f"\n[yellow]Crash details saved to {path}[/yellow]\n"
+                          "Run [cyan]jobagent report[/cyan] and share the "
+                          "output to get help.")
+        except Exception:
+            pass  # never let diagnostics hide the original error
+        raise
+
+
 if __name__ == "__main__":
-    app()
+    main()
