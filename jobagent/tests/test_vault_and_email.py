@@ -154,3 +154,46 @@ def test_user_files_readable_in_windows_encodings(tmp_path):
     cp1252 = tmp_path / "cp1252.md"
     cp1252.write_bytes("salary — $125,000".encode("cp1252"))
     assert "$125,000" in _read_user_text(cp1252)
+
+
+# --- newly-saved-jobs lifecycle --------------------------------------------
+
+def test_rescanning_does_not_disturb_in_flight_or_terminal_jobs(tmp_path):
+    """`go` is meant to be re-run whenever new jobs are saved. A re-scan must
+    leave finished work alone and keep new jobs flowing."""
+    from jobagent.store import Job, Store
+
+    store = Store(tmp_path / "t.db")
+    for url, status in (("applied-job", "applied"), ("closed-job", "closed"),
+                        ("tailored-job", "tailored")):
+        store.upsert_job(Job(url=url, source="linkedin", saved=True))
+        store.update(url, status=status, force=True)
+
+    # a re-scan upserts every saved job it sees again
+    for url in ("applied-job", "closed-job", "tailored-job", "brand-new-job"):
+        store.upsert_job(Job(url=url, source="linkedin", saved=True,
+                             title="T", description="d"))
+
+    assert store.get_job("applied-job").status == "applied"
+    assert store.get_job("closed-job").status == "closed"
+    assert store.get_job("tailored-job").status == "tailored"
+    assert store.get_job("brand-new-job").status == "discovered"
+
+    # what `go` step 4 picks up: in-flight saved jobs only
+    ready = {j.url for j in store.list_jobs(status=("tailored", "filled"),
+                                            saved=True)}
+    assert ready == {"tailored-job"}
+
+
+def test_closed_jobs_never_return_even_if_resaved(tmp_path):
+    """The user asked that a closed posting stop being applied to. Re-saving
+    it on LinkedIn must not resurrect it."""
+    from jobagent.store import Job, Store
+
+    store = Store(tmp_path / "t.db")
+    store.upsert_job(Job(url="u", source="linkedin", saved=True))
+    store.update("u", status="closed")
+
+    store.upsert_job(Job(url="u", source="linkedin", saved=True, title="Again"))
+    assert store.get_job("u").status == "closed"
+    assert store.list_jobs(status=("tailored", "filled"), saved=True) == []

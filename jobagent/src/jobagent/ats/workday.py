@@ -159,12 +159,13 @@ class WorkdayAdapter(BaseATSAdapter):
                     error_retry_done = True  # one re-fill pass, then give up
                 continue
 
-            # unknown page: give it a moment, then park with a screenshot
+            # unknown page: give it a moment, then park with diagnostics
             page.wait_for_timeout(2000)
             if self._classify(page) == "unknown":
-                self._shot(page, ctx, "unrecognized")
+                self._dump_state(page, ctx, "unrecognized")
                 report.outcome = BLOCKED
-                report.note = "unrecognized Workday page — screenshot saved"
+                report.note = ("unrecognized Workday page — diagnostics saved "
+                               "(share the .txt to teach the adapter this page)")
                 return report
 
         report.outcome = FAILED
@@ -229,10 +230,13 @@ class WorkdayAdapter(BaseATSAdapter):
                 "button:has-text('Sign In')"))
             page.wait_for_timeout(2500)
             if self._auth_failed(page):
+                self._dump_state(page, ctx, "auth-signin-failed")
                 report.outcome = BLOCKED
                 report.note = (f"sign-in with the vaulted account for {host} "
                                "was rejected — not retrying to avoid a "
-                               "lockout. Check `jobagent accounts`.")
+                               "lockout. See `jobagent accounts --show`, or "
+                               "reset the password on the tenant and "
+                               "`jobagent accounts --delete` the old one.")
                 return report
             return None
 
@@ -269,13 +273,17 @@ class WorkdayAdapter(BaseATSAdapter):
             "button:has-text('Create Account')"))
         page.wait_for_timeout(2500)
         if self._auth_failed(page):
+            self._dump_state(page, ctx, "auth-create-failed")
             errors = self._page_errors(page)
             report.outcome = BLOCKED
-            report.note = ("account creation failed"
-                           + (": " + "; ".join(errors[:2]) if errors else "")
-                           + " — an account may already exist for this email; "
-                             "use the tenant's password reset, then store it "
-                             "with `jobagent accounts`")
+            report.note = ("account creation did not complete"
+                           + (": " + "; ".join(errors[:2]) if errors else
+                              " (no page error visible — see the saved "
+                              "diagnostics)")
+                           + ". The generated password IS saved — "
+                             "`jobagent accounts --show` — so you can also "
+                             "finish signup by hand with it, and the agent "
+                             "will sign in with it next run.")
             return report
         ctx.log(f"  created Workday account on {host} (saved to the vault)")
         return None
@@ -437,6 +445,36 @@ class WorkdayAdapter(BaseATSAdapter):
             return ""
 
     # --- small helpers ------------------------------------------------------
+    def _dump_state(self, page, ctx: ApplyContext, tag: str) -> None:
+        """Screenshot + a structural inventory of the page (visible
+        data-automation-ids and button labels — no personal content), so a
+        parked run on a real tenant can be diagnosed and the adapter taught."""
+        self._shot(page, ctx, tag)
+        if ctx.screenshot_dir is None:
+            return
+        try:
+            ids = page.eval_on_selector_all(
+                "[data-automation-id]",
+                "els => els.filter(e => e.offsetParent !== null)"
+                ".map(e => e.tagName.toLowerCase() + ':' "
+                "+ e.getAttribute('data-automation-id'))") or []
+            labels = page.eval_on_selector_all(
+                "button, a",
+                "els => els.filter(e => e.offsetParent !== null)"
+                ".map(e => (e.innerText || '').trim())"
+                ".filter(t => t && t.length < 50)") or []
+            report = (f"url: {page.url}\n\nvisible data-automation-ids:\n"
+                      + "\n".join(f"  {i}" for i in sorted(set(ids)))
+                      + "\n\nvisible buttons/links:\n"
+                      + "\n".join(f"  {t}" for t in dict.fromkeys(labels)))
+            ctx.screenshot_dir.mkdir(parents=True, exist_ok=True)
+            (ctx.screenshot_dir / f"{tag}.txt").write_text(
+                report, encoding="utf-8")
+            ctx.log(f"    [dim]diagnostics saved: {ctx.screenshot_dir / tag}"
+                    ".png/.txt[/dim]")
+        except Exception:
+            pass
+
     def _is_final_page(self, page) -> bool:
         body = self._body(page)
         return ("review" in body and "submit" in body) or bool(
@@ -453,11 +491,19 @@ class WorkdayAdapter(BaseATSAdapter):
         for selector in selectors:
             button = page.locator(selector).first
             try:
-                if button.count() and button.is_visible():
-                    button.click()
-                    return True
+                if not (button.count() and button.is_visible()):
+                    continue
+                # Bounded: without a timeout Playwright scrolls-and-retries for
+                # 30s on a button it can't reach, which looks like the page
+                # endlessly scrolling. Fail fast and let the caller move on.
+                button.click(timeout=6000)
+                return True
             except Exception:
-                continue
+                try:  # last resort: a forced click ignores actionability
+                    button.click(force=True, timeout=3000)
+                    return True
+                except Exception:
+                    continue
         return False
 
     def _count(self, page, selector: str) -> int:
