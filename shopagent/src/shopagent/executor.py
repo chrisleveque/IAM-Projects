@@ -332,7 +332,13 @@ class Executor:
                 "TikTok client not configured; the rendered video is still in "
                 "output/video/ and can be uploaded from the app by hand")
         p = approval.payload
-        path = Path(p["video_path"])
+        # payloads are agent-authored: only files under output/ may leave the
+        # machine, so a poisoned video_path can't exfiltrate .env or token caches
+        path = Path(p["video_path"]).resolve()
+        if not path.is_relative_to(self.cfg.output_dir.resolve()):
+            raise ValueError(
+                f"video_path {p['video_path']!r} is outside "
+                f"{self.cfg.output_dir}; only rendered outputs can be uploaded")
         if not path.exists():
             raise ValueError(f"video not found: {path}")
         result = self.tiktok.upload_draft(path, p["caption"])
@@ -350,7 +356,11 @@ class Executor:
 
     def _marketing_publish(self, approval: Approval) -> dict:
         p = approval.payload
-        path = self._write_output(f"marketing/{p['channel']}", p["title"],
+        # channel is agent-authored free text: slugify it like the filename so
+        # it can't smuggle path separators into the output location
+        channel = re.sub(r"[^a-z0-9]+", "-",
+                         str(p["channel"]).lower()).strip("-")[:40] or "misc"
+        path = self._write_output(f"marketing/{channel}", p["title"],
                                   f"# {p['title']}\n\n{p['body']}\n")
         return {"written_to": str(path),
                 "note": "copy-ready content file; posting is manual in v1"}
@@ -358,7 +368,9 @@ class Executor:
     def _write_output(self, subdir: str, name: str, content: str):
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60] or "untitled"
-        out_dir = self.cfg.output_dir / subdir
+        out_dir = (self.cfg.output_dir / subdir).resolve()
+        if not out_dir.is_relative_to(self.cfg.output_dir.resolve()):
+            raise ValueError(f"output subdir {subdir!r} escapes the output directory")
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{stamp}_{slug}.md"
         # explicit utf-8: Windows defaults to cp1252, which chokes on emoji

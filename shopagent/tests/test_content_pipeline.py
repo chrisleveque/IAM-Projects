@@ -67,6 +67,10 @@ def stub_images(monkeypatch, listed_product):
     monkeypatch.setattr(
         "httpx.Client",
         lambda *a, **kw: real_client(transport=httpx.MockTransport(handler)))
+    # the transport is faked, so fake DNS too: the SSRF guard on the default
+    # client would otherwise reject cdn.test as unresolvable
+    monkeypatch.setattr("shopagent.video.render._url_is_public_https",
+                        lambda url: url.startswith("https://"))
     return listed_product
 
 
@@ -232,9 +236,10 @@ def test_upload_without_a_client_explains_the_fallback(store, cfg, shopify, cj,
     assert "output/video/" in approval.error
 
 
-def test_upload_draft_marks_the_product(store, cfg, shopify, cj, tiktok, tmp_path,
+def test_upload_draft_marks_the_product(store, cfg, shopify, cj, tiktok,
                                         listed_product):
-    video = tmp_path / "ad.mp4"
+    video = cfg.output_dir / "video" / "ad.mp4"
+    video.parent.mkdir(parents=True, exist_ok=True)
     video.write_bytes(b"x" * 100)
     store.propose(Approval(action_type="tiktok.upload_draft", agent="content",
                            title="upload",
@@ -247,14 +252,29 @@ def test_upload_draft_marks_the_product(store, cfg, shopify, cj, tiktok, tmp_pat
     assert tiktok.uploads[0]["bytes_uploaded"] == 100
 
 
-def test_upload_of_a_missing_file_fails(store, cfg, shopify, cj, tiktok, tmp_path):
+def test_upload_of_a_missing_file_fails(store, cfg, shopify, cj, tiktok):
     store.propose(Approval(action_type="tiktok.upload_draft", agent="content",
                            title="upload",
-                           payload={"video_path": str(tmp_path / "nope.mp4"),
+                           payload={"video_path": str(cfg.output_dir / "nope.mp4"),
                                     "caption": ""}))
     store.decide_approval(1, "approved")
     approval = Executor(store, cfg, shopify, cj, tiktok=tiktok).execute(1)
     assert approval.status == "failed" and "video not found" in approval.error
+
+
+def test_upload_outside_output_dir_is_rejected(store, cfg, shopify, cj, tiktok,
+                                               tmp_path):
+    """A poisoned payload must not be able to exfiltrate arbitrary local files
+    (.env, token caches) to TikTok on the back of one approval."""
+    secret = tmp_path / ".env"
+    secret.write_text("SHOPIFY_CLIENT_SECRET=hunter2")
+    store.propose(Approval(action_type="tiktok.upload_draft", agent="content",
+                           title="upload",
+                           payload={"video_path": str(secret), "caption": ""}))
+    store.decide_approval(1, "approved")
+    approval = Executor(store, cfg, shopify, cj, tiktok=tiktok).execute(1)
+    assert approval.status == "failed" and "outside" in approval.error
+    assert not tiktok.uploads
 
 
 # ------------------------------------------------------- json2video engine
