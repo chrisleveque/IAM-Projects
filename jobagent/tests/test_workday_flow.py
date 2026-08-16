@@ -304,3 +304,54 @@ def test_unanswerable_required_question_blocks(tmp_path):
             browser.close()
     assert report.outcome == BLOCKED
     assert "authorized to work" in report.note.lower()
+
+
+def test_click_helper_is_bounded_and_falls_back_to_force(tmp_path):
+    """A button Playwright can't scroll to must fail fast, not retry for 30s
+    (which looked like the page endlessly scrolling)."""
+    import time
+
+    html = """<!doctype html><html><body>
+      <div style='height:200vh'></div>
+      <button id='b' style='position:fixed;top:-500px'
+              onclick='document.title="clicked"'>Apply</button>
+    </body></html>"""
+    f = tmp_path / "p.html"
+    f.write_text(html, encoding="utf-8")
+    with sync_playwright() as pw:
+        browser = _launch(pw)
+        page = browser.new_page()
+        page.goto(f.as_uri())
+        started = time.monotonic()
+        WorkdayAdapter()._click_first(page, ("#b",))
+        elapsed = time.monotonic() - started
+        browser.close()
+    # bounded: 6s click + 3s forced retry, well under Playwright's 30s default
+    assert elapsed < 15, f"took {elapsed:.1f}s — click was not bounded"
+
+
+def test_dump_state_writes_shareable_diagnostics(tmp_path):
+    """A parked run must leave enough structure to teach the adapter, without
+    leaking page content."""
+    html = """<!doctype html><html><body>
+      <p>Chris Leveque, your application for Security Engineer</p>
+      <input data-automation-id='email'>
+      <button data-automation-id='signInSubmitButton'>Sign In</button>
+      <input data-automation-id='hidden' style='display:none'>
+    </body></html>"""
+    f = tmp_path / "p.html"
+    f.write_text(html, encoding="utf-8")
+    ctx = make_ctx(tmp_path, submit=False)
+    with sync_playwright() as pw:
+        browser = _launch(pw)
+        page = browser.new_page()
+        page.goto(f.as_uri())
+        WorkdayAdapter()._dump_state(page, ctx, "unrecognized")
+        browser.close()
+    report = (tmp_path / "shots" / "unrecognized.txt").read_text(encoding="utf-8")
+    assert "input:email" in report
+    assert "button:signInSubmitButton" in report
+    assert "Sign In" in report
+    assert "hidden" not in report          # invisible controls excluded
+    assert "Chris Leveque" not in report   # page content not leaked
+    assert (tmp_path / "shots" / "unrecognized.png").exists()

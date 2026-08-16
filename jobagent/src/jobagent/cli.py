@@ -734,12 +734,23 @@ def go(
              "the session before starting"),
     min_score: Optional[int] = typer.Option(
         None, help="Override scoring.min_score_to_tailor"),
+    submit: bool = typer.Option(
+        False, "--submit",
+        help="Actually submit applications on external ATSs (Greenhouse, "
+             "Lever, Workday). Without it, forms are filled and screenshotted "
+             "for you to review, and nothing is sent."),
+    external: bool = typer.Option(
+        True, "--external/--no-external",
+        help="Apply on employers' own ATSs after tailoring (default on). "
+             "This is the path for saved jobs, which are almost all external."),
 ):
     """The whole LinkedIn saved-jobs pipeline in ONE browser session.
 
-    Optionally imports your cookies, then scans saved jobs, scores, tailors,
-    and applies — the browser never closes between steps, so the session
-    can't be lost to a restart. Indeed jobs are handled by scan/apply.
+    Imports your cookies, scans saved jobs, scores, tailors, and applies —
+    all without closing the browser, so the signed-in session (the thing that
+    makes employer apply-links resolvable) is never lost between steps. This
+    is the "apply to my newly saved jobs" command: re-run it whenever you've
+    saved new jobs; anything already applied to, closed, or blocked is skipped.
     """
     from .browser import BrowserSession
     from .scrapers import linkedin as linkedin_scraper
@@ -781,10 +792,28 @@ def go(
                             source="linkedin")
         tailored_urls = _tailor_batch(cfg, store, ai, resume_text, jobs)
 
-        console.print("\n[bold]Step 4/4 — applying[/bold] (same browser, same session)")
-        ready = [j for j in (store.get_job(u) for u in tailored_urls) if j is not None]
+        console.print("\n[bold]Step 4/4 — applying[/bold] (same signed-in session)")
+        # Re-apply to everything still in flight, not only what we tailored
+        # this run: a job saved earlier and left tailored/filled should get
+        # picked up now. Terminal jobs (applied/closed) are excluded by status.
+        ready = store.list_jobs(status=("tailored", "filled"), saved=True,
+                                source="linkedin")
         if not ready:
             console.print("Nothing new to apply to this run.")
+        elif external:
+            # Resolving each employer's apply URL needs the signed-in session
+            # we already hold here — exactly why this runs inside `go`.
+            from .apply import auto
+            mode = ("[red]LIVE — will submit[/red]" if submit
+                    else "[cyan]dry run — fills & screenshots only[/cyan]")
+            console.print(f"{len(ready)} job(s) · {mode}")
+            counts = auto.run(session, ready, cfg, store, ai, resume_text,
+                              answers, submit, console)
+            for outcome, n in sorted(counts.items()):
+                console.print(f"  {outcome}: {n}")
+            if not submit and counts.get("filled"):
+                console.print("Review the screenshots, then re-run with "
+                              "[cyan]--submit[/cyan] to send them.")
         else:
             applied_today = _apply_in_session(
                 session, ready, store, cfg, ai, resume_text, answers,
